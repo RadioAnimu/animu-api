@@ -111,6 +111,22 @@ describe("HttpClient.get", () => {
     await expect(client.get("https://x.co/api")).rejects.toThrow(/timed out after 20ms/);
   });
 
+  it("classifies React Native-style aborts (no DOMException global) as timeouts", async () => {
+    fetchMock.mockImplementation(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            const abortError = new Error("Aborted");
+            abortError.name = "AbortError";
+            reject(abortError);
+          });
+        }),
+    );
+    const client = new HttpClient("TestAgent", 20);
+
+    await expect(client.get("https://x.co/api")).rejects.toThrow(/timed out after 20ms/);
+  });
+
   it("bypasses the micro-cache when noCache is set", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ n: 1 }));
     const client = new HttpClient("TestAgent", 5000);

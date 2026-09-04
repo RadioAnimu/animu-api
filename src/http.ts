@@ -110,8 +110,12 @@ export class HttpClient {
       return this.parseBody<T>(await response.text(), options?.responseType);
     } catch (error) {
       if (error instanceof AnimuApiError) throw error;
+      // Duck-typed on purpose: React Native (Hermes) has no `DOMException`
+      // global, so `instanceof DOMException` would itself throw there.
       const isAbort =
-        error instanceof DOMException && error.name === "AbortError";
+        !!error &&
+        typeof error === "object" &&
+        (error as { name?: unknown }).name === "AbortError";
       const message = isAbort
         ? `Request timed out after ${options?.timeout ?? this.defaultTimeout}ms`
         : error instanceof Error
