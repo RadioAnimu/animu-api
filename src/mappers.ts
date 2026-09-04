@@ -35,6 +35,14 @@ function isUrlAnImage(url: string): boolean {
 }
 
 /**
+ * The station's wall clock: São Paulo (America/Sao_Paulo), fixed UTC-3
+ * since 2019 (Brazil abolished DST). Request-history rows are stamped
+ * with bare time-of-day in this zone.
+ */
+const STATION_UTC_OFFSET_MS = 3 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
  * Parses the now-playing rawtitle: `"Artist - Title | Anime"`.
  *
  * Splits on `" | "` for the anime, then `" - "` for artist/title.
@@ -239,14 +247,14 @@ export function historyFromDTO(
 
   for (const item of parsed.data) {
     const [title] = item;
-    if (!title || title.toLowerCase().includes("animu")) continue;
+    if (!title) continue;
 
     const raw = title;
     const { title: song, artist, anime } = parseNowPlayingTitle(title);
     // Trailing tuple elements are loose (PHP arrays) — coerce here.
     const coverUrl = String((isRequests ? item[3] : item[1]) ?? "");
 
-    tracks.push({
+    const track: Track = {
       id: isRequests ? String(item[2] ?? "") || "-1" : "-1",
       raw,
       title: song,
@@ -257,30 +265,100 @@ export function historyFromDTO(
       duration: 0,
       isRequest: true,
       startTime: getHistoryStartTime(type, isRequests ? item[1] : ""),
-    });
+    };
+    // One filler rule for every panel (jingles/idents/transitions)
+    if (!isRealTrack(track)) continue;
+
+    tracks.push(track);
   }
 
   return tracks;
 }
 
 /**
- * Start time for a history row. Requests rows carry an `HH:MM:SS` timestamp
- * which is combined with today's date (built via Date components — parsing
- * such strings directly is unreliable on some engines). Everything else
- * uses the current time.
+ * Whether a mapped track is real programming instead of station filler —
+ * jingles / idents / transitions. The rule is the station's (its filler
+ * titles self-identify: the "animu" prefix on ids/jingles across its
+ * panels, "rádio animu" now-playing ids, "passagem" transitions), so it
+ * lives with the mappers and drives both history filtering and progress
+ * display.
  */
-function getHistoryStartTime(type: HistoryType, timeStr: string): Date {
+export function isRealTrack(track?: Track | null): boolean {
+  if (!track) return false;
+  const raw = track.raw?.toLowerCase() ?? "";
+  const anime = track.anime?.toLowerCase() ?? "";
+  const artist = track.artist?.toLowerCase() ?? "";
+  return (
+    !raw.includes("animu") &&
+    !anime.includes("passagem") &&
+    !artist.includes("rádio animu")
+  );
+}
+
+/**
+ * Elapsed playback time (ms) for the track on air, or `null` when there
+ * is nothing to show: track missing, not started yet, already ended, or
+ * carrying invalid duration/startTime fields.
+ *
+ * The radio plays server-side — progress derives from the station's
+ * `startTime` + `duration`, not from a local player position.
+ *
+ * @param track - The mapped on-air track, if any.
+ * @param now - Current epoch ms (injectable for tests).
+ */
+export function getTrackProgress(
+  track?: Track | null,
+  now: number = Date.now(),
+): number | null {
+  if (!track) return null;
+
+  const start = track.startTime?.getTime();
+  if (start == null || !Number.isFinite(start) || start > now) return null;
+
+  if (!Number.isFinite(track.duration) || track.duration <= 0) return null;
+
+  const elapsed = now - start;
+  if (elapsed > track.duration) return null;
+
+  return elapsed;
+}
+
+/**
+ * Start time for a history row.
+ *
+ * Request rows carry a bare `HH:MM:SS` in the station's wall clock
+ * (America/Sao_Paulo — fixed UTC-3 since 2019, no DST). Anchoring a bare
+ * time-of-day onto the DEVICE's calendar date produces a wrong absolute
+ * instant anywhere else — a user in Tokyo would see the row stamped with
+ * their own wall clock, and the true instant is São Paulo's. So anchor to
+ * the São Paulo calendar date of `now`, then convert (UTC = São Paulo + 3h).
+ * A built instant in the future means the São Paulo day rolled over since
+ * the row was logged — the row belongs to yesterday.
+ *
+ * Everything else (played rows carry no timestamp) uses `now`.
+ */
+function getHistoryStartTime(
+  type: HistoryType,
+  timeStr: string,
+  now: number = Date.now(),
+): Date {
   if (type === "requests" && timeStr) {
-    // Build via Date components — some engines (e.g. Hermes) can't parse
-    // "Wed Sep 03 2026 HH:MM:SS" style strings reliably.
     const [hours = 0, minutes = 0, seconds = 0] = timeStr
       .split(":")
       .map((part) => parseInt(part, 10) || 0);
-    const date = new Date();
-    date.setHours(hours, minutes, seconds, 0);
-    return date;
+    const spNow = new Date(now - STATION_UTC_OFFSET_MS);
+    const epoch =
+      Date.UTC(
+        spNow.getUTCFullYear(),
+        spNow.getUTCMonth(),
+        spNow.getUTCDate(),
+        hours,
+        minutes,
+        seconds,
+      ) + STATION_UTC_OFFSET_MS;
+    return new Date(epoch > now ? epoch - DAY_MS : epoch);
   }
-  return new Date();
+  return new Date(now);
 }
 
 /**

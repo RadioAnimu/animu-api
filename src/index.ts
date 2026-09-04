@@ -16,7 +16,9 @@ export {
   FALLBACK_STREAMS,
 } from "./endpoints.js";
 export {
+  getTrackProgress,
   historyFromDTO,
+  isRealTrack,
   listenersFromMetadata,
   musicRequestFromDTO,
   paginationFromDTO,

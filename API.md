@@ -86,9 +86,9 @@ definitions exported from the package.
 | `[1]` | `string` | cover URL |
 
 > **Business rules**
-> - Rows whose title contains `animu` are dropped (station jingles/idents).
+> - Filler rows are dropped via `isRealTrack` (station jingles/idents/transitions): raw title contains `animu`, artist contains `rádio animu`, or anime contains `passagem`.
 > - Empty titles are dropped.
-> - `duration` is `0`; `startTime` is now; `id` is `"-1"`; `isRequest` is `true`.
+> - Rows keep payload order (newest-first); `duration` is `0`; `startTime` is now; `id` is `"-1"`; `isRequest` is `true`.
 > - One malformed row invalidates the whole payload → `[]`.
 
 ---
@@ -114,8 +114,9 @@ definitions exported from the package.
 | `[3]` | `string` | cover URL |
 
 > **Business rules**
-> - Same row filtering as played history.
-> - `startTime` is **today** at the row's `HH:MM:SS` (built from date components — string parsing is unreliable across engines).
+> - Same row filtering as played history (`isRealTrack`).
+> - `HH:MM:SS` is the station's wall clock — São Paulo (fixed UTC-3 since 2019, no DST). The mapper anchors the time to the São Paulo calendar date and converts it to an absolute epoch, so a user in any timezone sees the play time converted to *their* local time on display.
+> - A built instant in the future means the São Paulo day rolled over since the row was logged → the row belongs to yesterday.
 > - Missing request id → `"-1"`.
 
 ---

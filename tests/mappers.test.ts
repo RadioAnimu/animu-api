@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  getTrackProgress,
   historyFromDTO,
+  isRealTrack,
   listenersFromMetadata,
   musicRequestFromDTO,
   paginationFromDTO,
@@ -14,6 +16,7 @@ import {
   userFromExchangePayload,
   validateLiveRequest,
 } from "../src/mappers";
+import type { Track } from "../src/types";
 import {
   MusicRequestResponseDTOSchema,
   StreamMetadataDTOSchema,
@@ -214,7 +217,9 @@ describe("historyFromDTO", () => {
   });
 
   it("maps requests history using [2] as id, [3] as cover and [1] as time", () => {
-    vi.useFakeTimers({ now: new Date("2026-09-03T12:00:00") });
+    // Fake clock at 18:00Z (15:00 São Paulo) — AFTER the rows' time-of-day,
+    // so they anchor to the same São Paulo day regardless of runner TZ
+    vi.useFakeTimers({ now: new Date("2026-09-03T18:00:00Z") });
     const tracks = historyFromDTO(requestsHistoryPayload, "requests", "medium", DEFAULT_COVER);
     expect(tracks).toHaveLength(2);
 
@@ -225,7 +230,8 @@ describe("historyFromDTO", () => {
       anime: "FMA Brotherhood",
       artwork: "https://www.animu.moe/media/tracks/req.jpg",
     });
-    expect(tracks[0]?.startTime).toEqual(new Date("2026-09-03T14:32:05"));
+    // "14:32:05" is São Paulo wall clock (UTC-3) → 17:32:05Z
+    expect(tracks[0]?.startTime).toEqual(new Date("2026-09-03T17:32:05Z"));
   });
 
   it("returns [] for garbage input", () => {
@@ -380,5 +386,90 @@ describe("validateLiveRequest", () => {
   it("rejects fields over 100 chars and requests over 500", () => {
     expect(validateLiveRequest({ ...valid, name: "a".repeat(101) }).success).toBe(false);
     expect(validateLiveRequest({ ...valid, request: "b".repeat(501) }).success).toBe(false);
+  });
+});
+
+describe("isRealTrack", () => {
+  const makeTrack = (overrides: Partial<Track> = {}): Track => ({
+    id: "1",
+    raw: "Artist - Title",
+    title: "Title",
+    artist: "Artist",
+    anime: "Naruto",
+    artworks: {},
+    artwork: "cover.jpg",
+    duration: 60_000,
+    isRequest: false,
+    startTime: new Date(),
+    ...overrides,
+  });
+
+  it("accepts normal tracks", () => {
+    expect(isRealTrack(makeTrack())).toBe(true);
+  });
+
+  it("filters jingles, idents and self-promo in any panel slot", () => {
+    // Played-history jingle row (live payload sample)
+    expect(
+      isRealTrack(makeTrack({ raw: "Rádio Animu - Animesong? | Haruka VHT" })),
+    ).toBe(false);
+    // Transition row (requests-history sample)
+    expect(
+      isRealTrack(
+        makeTrack({
+          raw: "Rádio Animu - Nemukunai, a nossa comunidade sonora | Passagem Urahara",
+        }),
+      ),
+    ).toBe(false);
+    // Now-playing ident ("rádio animu" in the artist slot)
+    expect(isRealTrack(makeTrack({ artist: "Rádio Animu" }))).toBe(false);
+    // Transition named in the anime slot only
+    expect(isRealTrack(makeTrack({ anime: "Passagem Musical" }))).toBe(false);
+  });
+
+  it("rejects missing tracks", () => {
+    expect(isRealTrack(null)).toBe(false);
+    expect(isRealTrack(undefined)).toBe(false);
+  });
+});
+
+describe("getTrackProgress", () => {
+  const NOW = 1_800_000_000_000;
+  const makeTrack = (overrides: Partial<Track> = {}): Track => ({
+    id: "1",
+    raw: "Artist - Title",
+    title: "Title",
+    artist: "Artist",
+    anime: "Naruto",
+    artworks: {},
+    artwork: "cover.jpg",
+    duration: 60_000,
+    isRequest: false,
+    startTime: new Date(NOW - 5_000),
+    ...overrides,
+  });
+
+  it("returns elapsed ms for a running track", () => {
+    expect(getTrackProgress(makeTrack(), NOW)).toBe(5_000);
+  });
+
+  it("returns null before the track starts", () => {
+    expect(getTrackProgress(makeTrack({ startTime: new Date(NOW + 5_000) }), NOW)).toBeNull();
+  });
+
+  it("returns null after the track ended", () => {
+    expect(
+      getTrackProgress(
+        makeTrack({ startTime: new Date(NOW - 61_000) }),
+        NOW,
+      ),
+    ).toBeNull();
+  });
+
+  it("returns null for invalid durations and invalid/missing dates", () => {
+    expect(getTrackProgress(makeTrack({ duration: 0 }), NOW)).toBeNull();
+    expect(getTrackProgress(makeTrack({ duration: -1 }), NOW)).toBeNull();
+    expect(getTrackProgress(makeTrack({ startTime: new Date(NaN) }), NOW)).toBeNull();
+    expect(getTrackProgress(undefined, NOW)).toBeNull();
   });
 });
