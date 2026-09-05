@@ -7,7 +7,13 @@ export {
   type RequestResult,
   type RequestErrorCode,
 } from "./errors.js";
-export { HttpClient, toFormData, type RequestOptions } from "./http.js";
+export {
+  HttpClient,
+  toFormData,
+  abortAllInFlightRequests,
+  type FetchLike,
+  type RequestOptions,
+} from "./http.js";
 export {
   DEFAULT_ANIME_FALLBACK,
   DEFAULT_COVER,

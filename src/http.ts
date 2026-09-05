@@ -1,5 +1,24 @@
 import { AnimuApiError } from "./errors.js";
 
+/**
+ * Structural fetch signature the client needs. Injected (instead of using
+ * the global) so React Native apps can pass `expo/fetch` — its dedicated
+ * native OkHttp stack cancels calls natively on abort and does not share
+ * React Native's `NetworkingModule` connection pool, which wedges when the
+ * app is backgrounded (stalled keep-alive connections never return data).
+ * Declared in this module but re-exported from `types.ts` for the public
+ * `AnimuApiOptions` surface.
+ */
+export type FetchLike = (
+  url: string,
+  init?: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: BodyInit;
+    signal?: AbortSignal;
+  },
+) => Promise<Response>;
+
 /** Per-call overrides for {@link HttpClient} requests. */
 export interface RequestOptions {
   /** Query parameters appended to the URL. */
@@ -20,6 +39,27 @@ interface CacheEntry {
 }
 
 /**
+ * Every in-flight request's abort controller. `abortAllInFlightRequests()`
+ * is the watchdog hook: in the background, RN JS timers freeze — the
+ * `setTimeout`-based abort inside `request()` never fires, so a stalled or
+ * dead-pooled-connection request hangs forever (and its caller latches).
+ * The caller's native-driven heartbeat calls this to cut the hung sockets
+ * loose so the next poll opens a fresh connection.
+ */
+const inFlightControllers = new Set<AbortController>();
+
+export const abortAllInFlightRequests = (): void => {
+  for (const controller of inFlightControllers) {
+    try {
+      controller.abort();
+    } catch {
+      // best-effort — a controller that fails to abort is discarded below
+    }
+  }
+  inFlightControllers.clear();
+};
+
+/**
  * Minimal fetch wrapper: timeout via AbortController, short-lived GET
  * micro-cache (protects against rapid-poll stampedes), FormData handling
  * and uniform {@link AnimuApiError} wrapping. Zero dependencies — works in
@@ -30,17 +70,21 @@ export class HttpClient {
   private readonly cacheDuration = 2500;
   private readonly defaultHeaders: Record<string, string>;
   private readonly defaultTimeout: number;
+  private readonly fetchImpl: FetchLike;
 
   /**
    * @param userAgent - Sent as the User-Agent header on every request.
    * @param timeout - Default per-request timeout in ms.
+   * @param fetchImpl - Fetch implementation; defaults to the global fetch.
+   *   Pass `expo/fetch` in React Native for native-stack aborts/cancels.
    */
-  constructor(userAgent: string, timeout: number) {
+  constructor(userAgent: string, timeout: number, fetchImpl?: FetchLike) {
     this.defaultHeaders = {
       "User-Agent": userAgent,
       "Content-Type": "application/json",
     };
     this.defaultTimeout = timeout;
+    this.fetchImpl = fetchImpl ?? ((...args) => fetch(...args));
   }
 
   /** Appends `params` as a query string; returns the URL untouched when empty. */
@@ -78,6 +122,7 @@ export class HttpClient {
   ): Promise<T> {
     const fullUrl = this.buildUrl(url, options?.params);
     const controller = new AbortController();
+    inFlightControllers.add(controller);
     const timeoutId = setTimeout(
       () => controller.abort(),
       options?.timeout ?? this.defaultTimeout,
@@ -92,7 +137,7 @@ export class HttpClient {
     }
 
     try {
-      const response = await fetch(fullUrl, {
+      const response = await this.fetchImpl(fullUrl, {
         method,
         headers,
         body,
@@ -124,6 +169,7 @@ export class HttpClient {
       throw new AnimuApiError(message, 0, { method, url: fullUrl });
     } finally {
       clearTimeout(timeoutId);
+      inFlightControllers.delete(controller);
     }
   }
 

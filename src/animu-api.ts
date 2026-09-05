@@ -68,6 +68,7 @@ export class AnimuApi {
     this.http = new HttpClient(
       options.userAgent ?? DEFAULT_USER_AGENT,
       options.timeout ?? 20000,
+      options.fetchImpl,
     );
     this.artworkQuality = options.artworkQuality ?? "medium";
     this.defaultCover = options.defaultCover ?? DEFAULT_COVER;

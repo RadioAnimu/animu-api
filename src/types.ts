@@ -1,6 +1,7 @@
+import type { FetchLike } from "./http.js";
+
 /** Artwork size preference used when resolving a track's cover image. */
 export type ArtworkQuality = "off" | "low" | "medium" | "high";
-
 /** Which history endpoint to query. */
 export type HistoryType = "requests" | "played";
 
@@ -149,6 +150,11 @@ export interface AnimuApiOptions {
   userAgent?: string;
   /** Per-request timeout in ms, applied when a call doesn't override it (default: 20000). */
   timeout?: number;
+  /** Fetch implementation override; defaults to the global fetch. Pass
+   * `expo/fetch` in React Native for a dedicated native OkHttp stack whose
+   * aborts cancel calls natively (RN's own stack can wedge when backgrounded).
+   * @default globalThis.fetch */
+  fetchImpl?: FetchLike;
   /** Artwork quality used when mapping tracks (default: `"medium"`). */
   artworkQuality?: ArtworkQuality;
   /** Cover used when a track has none (default: Animu's default cover). */
