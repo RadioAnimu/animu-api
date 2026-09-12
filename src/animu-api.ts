@@ -1,6 +1,8 @@
 import { DEFAULT_COVER, DEFAULT_USER_AGENT, ENDPOINTS, FALLBACK_STREAMS } from "./endpoints.js";
 import { AnimuApiError, ValidationError, type RequestResult } from "./errors.js";
 import { HttpClient, toFormData } from "./http.js";
+import { AnimuAuth } from "./auth.js";
+import type { AnimuAuthOptions } from "./auth-types.js";
 import {
   historyFromDTO,
   listenersFromMetadata,
@@ -60,8 +62,10 @@ export class AnimuApi {
   private readonly artworkQuality: ArtworkQuality;
   private readonly defaultCover: string;
   private readonly fallbackStreams: Stream[];
+  private readonly authOptions: AnimuAuthOptions;
 
   private cachedStreams: Stream[] | null = null;
+  private authClient: AnimuAuth | null = null;
 
   /** @param options - All fields optional; sensible Animu defaults are built in. */
   constructor(options: AnimuApiOptions = {}) {
@@ -73,6 +77,22 @@ export class AnimuApi {
     this.artworkQuality = options.artworkQuality ?? "medium";
     this.defaultCover = options.defaultCover ?? DEFAULT_COVER;
     this.fallbackStreams = options.fallbackStreams ?? [...FALLBACK_STREAMS];
+    this.authOptions = {
+      userAgent: options.userAgent ?? DEFAULT_USER_AGENT,
+      timeout: options.timeout ?? 20000,
+      fetchImpl: options.fetchImpl,
+      baseUrl: options.authBaseUrl,
+    };
+  }
+
+  /**
+   * Client for the Animu Auth API v5 (multi-provider OAuth, Animu Connect,
+   * profile management). Shares this instance's user agent, timeout and fetch
+   * implementation. Use `authBaseUrl` to point at a non-production deploy.
+   */
+  get auth(): AnimuAuth {
+    if (!this.authClient) this.authClient = new AnimuAuth(this.authOptions);
+    return this.authClient;
   }
 
   // ─── Now playing ────────────────────────────────────────────────────────

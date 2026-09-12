@@ -1,7 +1,7 @@
 {
   "name": "animu-api",
   "version": "1.0.0",
-  "description": "TypeScript API client for Animu radio (api.animu.com.br). Track metadata, programs, history, music requests, live requests, streams and auth.",
+  "description": "TypeScript API client for Animu radio (api.animu.moe). Track metadata, programs, history, music requests, live requests, streams and auth.",
   "keywords": [
     "animu",
     "radio",

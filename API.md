@@ -8,7 +8,7 @@ definitions exported from the package.
 
 ## 1. Now Playing — `getStreamMetadata()`
 
-`GET https://api.animu.com.br/`
+`GET https://api.animu.moe/`
 
 | | |
 | --- | --- |
@@ -40,7 +40,7 @@ definitions exported from the package.
 
 ## 2. Current Program — `getProgram()`
 
-`GET https://www.animu.com.br/teste/locutor.php`
+`GET https://www.animu.moe/teste/locutor.php`
 
 | | |
 | --- | --- |
@@ -69,7 +69,7 @@ definitions exported from the package.
 
 ## 3. Played History — `getTrackHistory("played")`
 
-`GET https://www.animu.com.br/teste/ultimasmusicas_json.php`
+`GET https://www.animu.moe/teste/ultimasmusicas_json.php`
 
 | | |
 | --- | --- |
@@ -95,7 +95,7 @@ definitions exported from the package.
 
 ## 4. Requests History — `getTrackHistory("requests")`
 
-`GET https://www.animu.com.br/teste/ultimospedidos_json.php`
+`GET https://www.animu.moe/teste/ultimospedidos_json.php`
 
 | | |
 | --- | --- |
@@ -123,7 +123,7 @@ definitions exported from the package.
 
 ## 5. Music Request Search — `searchMusic()` / `searchMusicByTitle()`
 
-`GET https://www.animu.com.br/teste/requestSearchTest.php`
+`GET https://www.animu.moe/teste/requestSearchTest.php`
 
 | | |
 | --- | --- |
@@ -156,7 +156,7 @@ definitions exported from the package.
 
 ## 6. Submit Music Request — `submitMusicRequest()`
 
-`POST https://www.animu.com.br/teste/sistemaPedidos/pedirquatro.php?mobileapp=1`
+`POST https://www.animu.moe/teste/sistemaPedidos/pedirquatro.php?mobileapp=1`
 
 | | |
 | --- | --- |
@@ -177,7 +177,7 @@ definitions exported from the package.
 
 ## 7. Live Request (shout-out) — `submitLiveRequest()`
 
-`POST https://www.animu.com.br/paineldj/ajaxforms(defasado)/request/salvar.php`
+`POST https://www.animu.moe/paineldj/ajaxforms(defasado)/request/salvar.php`
 
 | | |
 | --- | --- |
@@ -222,7 +222,7 @@ definitions exported from the package.
 
 ## 9. Validate Session — `validateSession()`
 
-`GET https://www.animu.com.br/teste/chatIsThisReal.php?PHPSESSID=…`
+`GET https://www.animu.moe/teste/chatIsThisReal.php?PHPSESSID=…`
 
 | | |
 | --- | --- |
@@ -235,7 +235,7 @@ definitions exported from the package.
 
 ## 10. Logout — `logout()`
 
-`GET https://www.animu.com.br/teste/byeChat.php?PHPSESSID=…`
+`GET https://www.animu.moe/teste/byeChat.php?PHPSESSID=…`
 
 | | |
 | --- | --- |
@@ -247,7 +247,7 @@ definitions exported from the package.
 
 ## 11. Token Exchange — `exchangeToken()`
 
-`POST https://www.animu.com.br/teste/exchange-token.php`
+`POST https://www.animu.moe/teste/exchange-token.php`
 
 | | |
 | --- | --- |
@@ -281,3 +281,294 @@ definitions exported from the package.
 | GET micro-cache | 2.5 s per URL; bypass with `noCache` or `forceRefresh` |
 | JSON parsing | falls back to raw text when the body is not JSON |
 | Error type | `AnimuApiError` (`statusCode: 0` for network/timeout) |
+
+---
+
+# Auth API (v5) — `AnimuAuth`
+
+The [Animu Login System](https://github.com/RadioAnimu/login-system-project)
+replaces the single Discord flow above with multi-provider OAuth (Discord,
+Google, Apple), an optional native **Animu Connect** username/password layer
+and full profile management. `AnimuAuth` is the client for that service.
+
+```ts
+import { AnimuAuth } from "animu-api";
+
+const auth = new AnimuAuth(); // production deploy
+// or: new AnimuAuth({ baseUrl: "http://localhost:8088" })
+// or: new AnimuApi({ authBaseUrl }).auth
+```
+
+The default `baseUrl` is `https://www.animu.moe/teste/login_system_project`;
+every request targets `<baseUrl>/api/v5/…`.
+
+## Envelope & errors
+
+```jsonc
+// success
+{ "ok": true,  "data": { /* endpoint-specific */ } }
+// failure
+{ "ok": false, "error": { "code": "unauthenticated", "message": "no valid session" } }
+```
+
+Server failures throw an `AnimuApiError` whose `.statusCode` is the HTTP
+status and whose `.code` is the machine-readable code below (network/timeout
+failures have `statusCode: 0` and no `code`).
+
+| HTTP | `code` | Meaning |
+| --- | --- | --- |
+| 400 | `missing_params` | `exchange-token`: missing `code`/`redirect_uri` |
+| 400 | `invalid_upload` | Avatar missing/unsupported/too large |
+| 400 | `link_failed` / `unlink_failed` | Link/unlink rejected |
+| 401 | `token_exchange_failed` | Provider rejected the OAuth code |
+| 401 | `provider_error` | Provider rejected the code during a link |
+| 401 | `native_auth_failed` | Bad Animu Connect credentials or lockout |
+| 401 | `unauthenticated` | `me/*` without a valid session (also thrown client-side when no token is set) |
+| 404 | `unknown_provider` | Provider not configured |
+| 404 | `no_avatar` / `no_banner` | No image available |
+| 409 | `credentials_failed` | Validation, username conflict or missing current password |
+| 409 | `refresh_failed` | Could not refresh from the provider |
+| 409 | `link_conflict` | That provider identity belongs to another profile |
+| 409 | `last_provider` | Unlinking would leave no social login |
+| 422 | `avatar_nsfw` | Avatar rejected by the safety filter |
+
+## Session transport
+
+The session token is the `PHPSESSID` returned at login. Login methods store it
+on the client automatically; every session method also accepts an explicit
+`sessionId` override. It is sent as the `X-Session-Id` header.
+
+```ts
+auth.sessionToken;                       // string | null
+auth.setSessionToken(token);             // rehydrate a persisted session
+auth.clearSession();                     // forget it locally
+```
+
+> **Business rules**
+> - Sessions live 7 days and are idle-expired after 7 days; the id is
+>   regenerated on login (session fixation protection).
+> - `verified === true` **only** when Discord is linked **and** 2FA is enabled
+>   on Discord — this gates the pedidos music queue. Google/Apple never verify.
+> - Identity ownership: `custom user edits > Discord (when linked) > first
+>   provider`. Custom names/avatars are never overwritten by a provider.
+
+## 12. Providers — `getProviders()`
+
+`GET /api/v5/providers.php` · no auth
+
+| | |
+| --- | --- |
+| **Returns** | `ProviderInfo[]` — `{ name, label }` |
+| **Errors** | none |
+
+> Build login buttons from this at runtime; the provider set can change
+> server-side without a client release.
+
+## 13. Token Exchange — `exchangeToken(params)`
+
+`POST /api/v5/auth/exchange-token.php` · no auth (primary mobile login)
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `provider` | no | defaults to `discord` |
+| `code` | yes | authorization code |
+| `redirectUri` | yes | must match the authorize step |
+| `codeVerifier` | no | PKCE verifier |
+
+| | |
+| --- | --- |
+| **Returns** | `AuthSession` — `{ sessionToken, action, user }` |
+| **Errors** | `missing_params`, `unknown_provider`, `token_exchange_failed` |
+
+> `action` is `registered` (new account) or `login` (returning). The returned
+> token is stored on the client automatically.
+
+## 14. Native Login — `nativeLogin(params)`
+
+`POST /api/v5/auth/native.php` · no auth
+
+| Field | Required |
+| --- | --- |
+| `username` | yes |
+| `password` | yes |
+
+| | |
+| --- | --- |
+| **Returns** | `AuthSession` (`action: "login"`, `user.verified` set) |
+| **Errors** | `native_auth_failed` |
+
+> There is no native signup — credentials are created from an existing account
+> via `setCredentials`. After **8** failed attempts the username is locked for
+> **5 minutes**.
+
+## 15. Session Status — `getSessionStatus(sessionId?)`
+
+`GET /api/v5/auth/session-status.php` · session optional
+
+| | |
+| --- | --- |
+| **Returns** | `AuthSessionStatus` — `{ authenticated, sessionToken }` |
+| **Errors** | none |
+
+## 16. Logout — `logout(sessionId?)`
+
+`POST /api/v5/auth/logout.php` · session required
+
+| | |
+| --- | --- |
+| **Returns** | `boolean` — always `true` on success |
+| **Errors** | `unauthenticated` (thrown client-side without a token) |
+
+> Destroys the session server-side and clears the stored token.
+
+## 17. Profile — `getProfile(sessionId?)`
+
+`GET /api/v5/me/profile.php` · session required
+
+| | |
+| --- | --- |
+| **Returns** | `AuthProfile` |
+| **Errors** | `unauthenticated` |
+
+`AuthProfile`: `{ user, banner, linkedProviders, availableProviders, session, links }`.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `user.avatarUrl` | `string \| null` | custom/cached bytes or provider CDN; relative paths resolved against `baseUrl` |
+| `user.avatarCustom` | `boolean` | `true` when a custom upload is set |
+| `banner.url` | `string \| null` | `me/banner.php` when cached; else `null` |
+| `banner.color` | `string \| null` | Discord accent color fallback |
+| `linkedProviders[]` | `{ provider, providerUserId, providerEmail }` | |
+| `session.loginProvider` | `string \| null` | `discord\|google\|apple\|native` |
+
+## 18. Refresh — `refreshProfile(sessionId?)`
+
+`POST /api/v5/me/refresh.php` · session required
+
+| | |
+| --- | --- |
+| **Returns** | `AuthRefreshResult` — `{ updated, verified, user }` |
+| **Errors** | `unauthenticated`, `refresh_failed` |
+
+> Re-fetches every linked provider (refreshing stored tokens first) and
+> updates the profile + `verified`. The top-level `verified` is copied onto
+> `user.verified` by the mapper (that endpoint omits it on `user`).
+
+## 19. Credentials — `setCredentials(params, sessionId?)`
+
+`POST /api/v5/me/credentials.php` · session required
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `username` | yes | `^[a-z0-9_.-]{3,32}$` (unique, case-insensitive) |
+| `password` | setup only | 8–128 chars; optional on rename |
+| `currentPassword` | when credentials exist | verified against the stored hash |
+
+| | |
+| --- | --- |
+| **Returns** | `AuthCredentialsResult` — `{ username, setUp }` |
+| **Errors** | `unauthenticated`, `credentials_failed` |
+
+> The username is a **login credential**, not the public display name. Changing
+> the username or password always requires `currentPassword`.
+
+## 20. Link Provider — `linkProvider(params, sessionId?)`
+
+`POST /api/v5/me/link.php` · session required
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `provider` | yes | must be configured |
+| `code` | yes | authorization code |
+| `redirectUri` | yes | must match the authorize step |
+| `codeVerifier` | no | PKCE verifier |
+| `user` | no | Apple only: `user` JSON from the first consent callback |
+
+| | |
+| --- | --- |
+| **Returns** | `AuthLinkResult` — `{ action, provider, user, linkedProviders }` |
+| **Errors** | `missing_params`, `unknown_provider`, `link_failed`, `provider_error`, `link_conflict` |
+
+> Run the provider's OAuth redirect yourself and post the code back — the same
+> pattern as `exchangeToken`, but authenticated.
+
+## 21. Unlink Provider — `unlinkProvider(provider, sessionId?)`
+
+`POST /api/v5/me/unlink.php` · session required
+
+| | |
+| --- | --- |
+| **Returns** | `AuthUnlinkResult` — `{ unlinked, provider, needsSetup, linkedProviders }` |
+| **Errors** | `unlink_failed`, `last_provider` |
+
+> At least one social provider must remain linked. `needsSetup` is `true` when
+> the account lost its identity and must be rebuilt.
+
+## 22. Avatar — `getAvatar()` / `uploadAvatar()` / `resetAvatar()`
+
+Session required.
+
+| Method | HTTP | Result |
+| --- | --- | --- |
+| `getAvatar(sessionId?)` | `GET` | `AuthImage` — `{ bytes, contentType }` (custom upload → cached provider → provider CDN) |
+| `uploadAvatar({ avatar, filename? }, sessionId?)` | `POST` | `string \| null` — new avatar URL. `multipart/form-data` field `avatar`, jpeg/png/webp/gif ≤ 8 MB, re-encoded to 256 px JPEG, NSFW-checked |
+| `resetAvatar(sessionId?)` | `DELETE` | `string \| null` — provider avatar URL |
+
+| | |
+| --- | --- |
+| **Errors** | `unauthenticated`, `no_avatar` (GET), `invalid_upload` / `avatar_nsfw` (POST) |
+
+> `getAvatar` streams raw bytes through `HttpClient.getBinary` (no JSON parsing).
+
+> **React Native**: the binary methods use `Response.arrayBuffer()`, which RN's
+> global `fetch` does not implement. Pass `expo/fetch` as `fetchImpl` (the JSON
+> methods work with either). For `uploadAvatar`, pass a `Blob` or an
+> `expo-file-system` `File`; Expo's `expo/fetch` rejects RN's `{ uri, type, name }`
+> FormData part.
+
+## 23. Banner — `getBanner(sessionId?)`
+
+`GET /api/v5/me/banner.php` · session required
+
+| | |
+| --- | --- |
+| **Returns** | `AuthImage` — `{ bytes, contentType }` |
+| **Errors** | `unauthenticated`, `no_banner` |
+
+> There is no banner upload/reset — banners are provider-derived. When no
+> banner is cached, fall back to `banner.color` from `getProfile()`.
+
+## 24. Delete Account — `deleteAccount(sessionId?)`
+
+`DELETE /api/v5/me/account.php` · session required
+
+| | |
+| --- | --- |
+| **Returns** | `boolean` — always `true` on success |
+| **Errors** | `unauthenticated` |
+
+> Permanently deletes the profile, its links, Animu Connect credentials and
+> sessions (irreversible). Clears the stored token.
+
+## Browser helper
+
+| Method | Purpose |
+| --- | --- |
+| `browserLoginUrl(provider?)` | `…/login.php` or `…/login.php?start=<provider>` for the HTML flow |
+
+## Legacy mobile contract
+
+The unmodified mobile app and the pedidos scripts use non-enveloped endpoints
+that take the session as `?PHPSESSID=`. They are exposed for completeness —
+prefer the v5 methods above.
+
+| Method | Endpoint | Returns |
+| --- | --- | --- |
+| `legacyExchangeToken(params)` | `POST /mobile/exchange-token.php` | `LegacyMobileSession` — `{ user, sessionToken, action }`; `user` is `discord_data` (`{ username, id, avatar, mfa, avatarUrl, nickname, avatarDecorationData }`) for Discord-linked accounts, `null` otherwise |
+| `legacySessionStatus(sessionId)` | `GET /mobile/session-status.php?PHPSESSID=…` | `boolean` — `true` only for a logged-in **Discord** session |
+| `legacySessionLogout(sessionId)` | `GET /mobile/session-logout.php?PHPSESSID=…` | `boolean` — destroys the session, `true` when it was a Discord session |
+
+> `legacyExchangeToken` failure bodies (`{ error, message? }`) are returned at
+> HTTP 200; the client still throws an `AnimuApiError` carrying `error` as
+> `.code`. The older `AnimuApi.exchangeToken` / `validateSession` / `logout`
+> methods target the original `/teste/*` legacy endpoints.

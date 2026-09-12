@@ -8,7 +8,8 @@ export interface RequestInfo {
  * Error thrown for any failed HTTP exchange or boundary validation failure.
  *
  * Carries the HTTP status when known (0 for network/timeout/validation
- * failures) plus the request method and URL for debugging.
+ * failures) plus the request method and URL for debugging. For the Animu Auth
+ * API (v5) the server's machine-readable `code` is preserved too.
  */
 export class AnimuApiError extends Error {
   /** HTTP status code, or `0` when the request never got a response. */
@@ -17,26 +18,35 @@ export class AnimuApiError extends Error {
   readonly url?: string;
   /** Request method, when known. */
   readonly method?: string;
+  /**
+   * Machine-readable error code from the server's error envelope
+   * (Animu Auth API v5), e.g. `"token_exchange_failed"`. `undefined` for
+   * network failures and endpoints that don't use the envelope.
+   */
+  readonly code?: string;
 
   constructor(
     message: string,
     statusCode = 0,
     info: RequestInfo = {},
+    code?: string,
   ) {
     super(message);
     this.name = "AnimuApiError";
     this.statusCode = statusCode;
     this.url = info.url;
     this.method = info.method;
+    this.code = code;
     Object.setPrototypeOf(this, AnimuApiError.prototype);
   }
 
-  /** Status/method/url as a plain object for logging. */
+  /** Status/method/url/code as a plain object for logging. */
   get details() {
     return {
       status: this.statusCode,
       url: this.url,
       method: this.method,
+      code: this.code,
     };
   }
 }

@@ -33,6 +33,48 @@ export interface RequestOptions {
   noCache?: boolean;
 }
 
+/** Raw binary body plus its content type, returned by {@link HttpClient.getBinary}. */
+export interface BinaryResponse {
+  bytes: Uint8Array;
+  contentType: string;
+}
+
+/** HTTP methods supported by {@link HttpClient}. */
+type HttpMethod = "GET" | "POST" | "DELETE";
+
+/**
+ * Builds an {@link AnimuApiError} from a failed response, preserving the
+ * server's error envelope when present:
+ * `{ "ok": false, "error": { "code", "message" } }`.
+ */
+function errorFromResponse(
+  status: number,
+  text: string,
+  method: string,
+  url: string,
+): AnimuApiError {
+  let message = `HTTP error ${status}`;
+  let code: string | undefined;
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (parsed && typeof parsed === "object") {
+      const error = (parsed as { error?: unknown }).error;
+      if (typeof error === "string" && error) {
+        message = error;
+      } else if (error && typeof error === "object") {
+        const envelope = error as { code?: unknown; message?: unknown };
+        if (typeof envelope.code === "string") code = envelope.code;
+        if (typeof envelope.message === "string" && envelope.message) {
+          message = envelope.message;
+        }
+      }
+    }
+  } catch {
+    // Not JSON — keep the generic status message.
+  }
+  return new AnimuApiError(message, status, { method, url }, code);
+}
+
 interface CacheEntry {
   data: unknown;
   timestamp: number;
@@ -113,12 +155,17 @@ export class HttpClient {
     }
   }
 
-  /** Core request: applies headers/timeout, normalizes all failures to {@link AnimuApiError}. */
-  private async request<T>(
-    method: "GET" | "POST",
+  /**
+   * Core transport: applies headers/timeout, runs `consume` while the abort
+   * timer is still armed, and normalizes network/abort failures to
+   * {@link AnimuApiError}. HTTP status errors are surfaced by `consume`.
+   */
+  private async perform<T>(
+    method: HttpMethod,
     url: string,
-    body?: BodyInit,
-    options?: RequestOptions,
+    body: BodyInit | undefined,
+    options: RequestOptions | undefined,
+    consume: (response: Response, fullUrl: string) => Promise<T>,
   ): Promise<T> {
     const fullUrl = this.buildUrl(url, options?.params);
     const controller = new AbortController();
@@ -143,16 +190,7 @@ export class HttpClient {
         body,
         signal: controller.signal,
       });
-
-      if (!response.ok) {
-        throw new AnimuApiError(
-          `HTTP error ${response.status}`,
-          response.status,
-          { method, url: fullUrl },
-        );
-      }
-
-      return this.parseBody<T>(await response.text(), options?.responseType);
+      return await consume(response, fullUrl);
     } catch (error) {
       if (error instanceof AnimuApiError) throw error;
       // Duck-typed on purpose: React Native (Hermes) has no `DOMException`
@@ -171,6 +209,22 @@ export class HttpClient {
       clearTimeout(timeoutId);
       inFlightControllers.delete(controller);
     }
+  }
+
+  /** Core request: normalizes HTTP failures (with server error envelopes) to {@link AnimuApiError}. */
+  private async request<T>(
+    method: HttpMethod,
+    url: string,
+    body?: BodyInit,
+    options?: RequestOptions,
+  ): Promise<T> {
+    return this.perform(method, url, body, options, async (response, fullUrl) => {
+      const text = await response.text();
+      if (!response.ok) {
+        throw errorFromResponse(response.status, text, method, fullUrl);
+      }
+      return this.parseBody<T>(text, options?.responseType);
+    });
   }
 
   /**
@@ -198,6 +252,36 @@ export class HttpClient {
     options?: RequestOptions,
   ): Promise<T> {
     return this.request<T>("POST", url, body, options);
+  }
+
+  /** DELETE — never cached. */
+  async delete<T>(
+    url: string,
+    body?: BodyInit,
+    options?: RequestOptions,
+  ): Promise<T> {
+    return this.request<T>("DELETE", url, body, options);
+  }
+
+  /**
+   * GET returning raw bytes (avatars, banners). HTTP failures are normalized
+   * exactly like {@link get}, including the server error envelope.
+   */
+  async getBinary(
+    url: string,
+    options?: RequestOptions,
+  ): Promise<BinaryResponse> {
+    return this.perform("GET", url, undefined, options, async (response, fullUrl) => {
+      if (!response.ok) {
+        const text = await response.text();
+        throw errorFromResponse(response.status, text, "GET", fullUrl);
+      }
+      const buffer = await response.arrayBuffer();
+      return {
+        bytes: new Uint8Array(buffer),
+        contentType: response.headers?.get?.("content-type") ?? "",
+      };
+    });
   }
 
   /** Drops every cached response. */

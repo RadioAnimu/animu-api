@@ -255,7 +255,7 @@ describe("musicRequestFromDTO + paginationFromDTO", () => {
       song: "Aegis of Love",
       anime: "Ijiranaide, Nagatoro-san 2nd Attack",
       artist: "Sunomiya (CV: Sayumi Suzushiro)",
-      artwork: "https://www.animu.com.br//media/tracks/trackImage9126_large.jpg", // web base keeps its trailing slash (app parity)
+      artwork: "https://www.animu.moe//media/tracks/trackImage9126_large.jpg", // web base keeps its trailing slash (app parity)
       requestable: true,
     });
   });

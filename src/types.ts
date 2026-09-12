@@ -161,4 +161,9 @@ export interface AnimuApiOptions {
   defaultCover?: string;
   /** Streams returned when the stream list endpoint fails (default: Animu's public relays). */
   fallbackStreams?: Stream[];
+  /**
+   * Deployment base for the Animu Auth API v5 (multi-provider login + profile),
+   * used by the {@link AnimuApi.auth} client. Defaults to the production deploy.
+   */
+  authBaseUrl?: string;
 }

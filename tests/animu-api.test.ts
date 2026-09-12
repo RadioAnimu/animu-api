@@ -46,7 +46,7 @@ afterEach(() => {
 
 describe("getStreamMetadata", () => {
   it("returns mapped track and listeners", async () => {
-    mockFetch([{ match: (u) => u.startsWith("https://api.animu.com.br"), reply: () => jsonResponse(metadataPayload) }]);
+    mockFetch([{ match: (u) => u.startsWith("https://api.animu.moe"), reply: () => jsonResponse(metadataPayload) }]);
     const api = new AnimuApi();
 
     const { track, listeners } = await api.getStreamMetadata();

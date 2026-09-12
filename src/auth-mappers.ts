@@ -1,0 +1,198 @@
+import type {
+  AuthCredentialsDTO,
+  AuthLinkDTO,
+  AuthProfileDTO,
+  AuthRefreshDTO,
+  AuthSessionDTO,
+  AuthSessionStatusDTO,
+  AuthUnlinkDTO,
+  AuthUserDTO,
+  LegacyMobileSessionDTO,
+  LinkedProviderDTO,
+  ProviderDTO,
+} from "./auth-schemas.js";
+import type {
+  AuthBanner,
+  AuthCredentialsResult,
+  AuthLinkResult,
+  AuthProfile,
+  AuthRefreshResult,
+  AuthSession,
+  AuthSessionStatus,
+  AuthUnlinkResult,
+  AuthUser,
+  LegacyMobileSession,
+  LinkedProvider,
+  ProviderInfo,
+} from "./auth-types.js";
+
+/** Resolves relative API paths (`api/v5/me/avatar.php`) against the auth base. */
+function resolveUrl(baseUrl: string, url: string | null): string | null {
+  if (!url) return null;
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${baseUrl.replace(/\/+$/, "")}/${url.replace(/^\/+/, "")}`;
+}
+
+/**
+ * Maps the shared user projection to an {@link AuthUser}, resolving relative
+ * avatar paths against the auth base.
+ */
+export function authUserFromDTO(dto: AuthUserDTO, baseUrl: string): AuthUser {
+  return {
+    id: dto.id,
+    username: dto.username,
+    handle: dto.handle,
+    email: dto.email,
+    avatarUrl: resolveUrl(baseUrl, dto.avatar_url),
+    avatarCustom: dto.avatar_custom,
+    verified: dto.verified,
+    createdAt: dto.created_at,
+  };
+}
+
+/** Maps a login result (`exchangeToken` / `nativeLogin`). */
+export function authSessionFromDTO(
+  dto: AuthSessionDTO,
+  baseUrl: string,
+): AuthSession {
+  return {
+    sessionToken: dto.session_token,
+    action: dto.action,
+    user: authUserFromDTO(dto.user, baseUrl),
+  };
+}
+
+/** Maps a provider list payload. */
+export function providerListFromDTO(data: {
+  providers: ProviderDTO[];
+}): ProviderInfo[] {
+  return data.providers.map((p) => ({ name: p.name, label: p.label }));
+}
+
+/** Maps a session-status payload. */
+export function sessionStatusFromDTO(
+  dto: AuthSessionStatusDTO,
+): AuthSessionStatus {
+  return {
+    authenticated: dto.authenticated,
+    sessionToken: dto.session_token,
+  };
+}
+
+/** Maps a linked-provider DTO. */
+export function linkedProviderFromDTO(dto: LinkedProviderDTO): LinkedProvider {
+  return {
+    provider: dto.provider,
+    providerUserId: dto.provider_user_id,
+    providerEmail: dto.provider_email,
+  };
+}
+
+/** Maps a banner DTO, resolving a relative banner URL against the auth base. */
+export function bannerFromDTO(
+  dto: AuthProfileDTO["banner"],
+  baseUrl: string,
+): AuthBanner {
+  return { url: resolveUrl(baseUrl, dto.url), color: dto.color };
+}
+
+/** Maps the full profile payload. */
+export function authProfileFromDTO(
+  dto: AuthProfileDTO,
+  baseUrl: string,
+): AuthProfile {
+  return {
+    user: authUserFromDTO(dto.user, baseUrl),
+    banner: bannerFromDTO(dto.banner, baseUrl),
+    linkedProviders: dto.linked_providers.map(linkedProviderFromDTO),
+    availableProviders: dto.available_providers.map((p) => ({
+      name: p.name,
+      label: p.label,
+    })),
+    session: {
+      sessionId: dto.session.session_id,
+      loginProvider: dto.session.login_provider,
+      lastActivity: dto.session.last_activity,
+    },
+    links: {
+      avatar: resolveUrl(baseUrl, dto.links.avatar) ?? "",
+      browserLogin: resolveUrl(baseUrl, dto.links.browser_login) ?? "",
+    },
+  };
+}
+
+/**
+ * Maps a refresh payload. The top-level `verified` is authoritative (the
+ * `user` object omits it on this endpoint), so it is copied onto the user.
+ */
+export function authRefreshFromDTO(
+  dto: AuthRefreshDTO,
+  baseUrl: string,
+): AuthRefreshResult {
+  const user = authUserFromDTO(dto.user, baseUrl);
+  return {
+    updated: dto.updated,
+    verified: dto.verified,
+    user: { ...user, verified: dto.verified },
+  };
+}
+
+/** Maps a credentials setup/update payload. */
+export function authCredentialsFromDTO(
+  dto: AuthCredentialsDTO,
+): AuthCredentialsResult {
+  return { username: dto.username, setUp: dto.set_up };
+}
+
+/** Maps a provider-link payload. */
+export function authLinkFromDTO(
+  dto: AuthLinkDTO,
+  baseUrl: string,
+): AuthLinkResult {
+  return {
+    action: dto.action,
+    provider: dto.provider,
+    user: authUserFromDTO(dto.user, baseUrl),
+    linkedProviders: dto.linked_providers.map(linkedProviderFromDTO),
+  };
+}
+
+/** Maps a provider-unlink payload. */
+export function authUnlinkFromDTO(dto: AuthUnlinkDTO): AuthUnlinkResult {
+  return {
+    unlinked: dto.unlinked,
+    provider: dto.provider,
+    needsSetup: dto.needs_setup,
+    linkedProviders: dto.linked_providers.map(linkedProviderFromDTO),
+  };
+}
+
+/** Resolves the `avatar_url` returned by the avatar upload/reset endpoints. */
+export function avatarUrlFromDTO(
+  dto: { avatar_url: string | null },
+  baseUrl: string,
+): string | null {
+  return resolveUrl(baseUrl, dto.avatar_url);
+}
+
+/** Maps the legacy `/mobile/exchange-token.php` payload. */
+export function legacyMobileSessionFromDTO(
+  dto: LegacyMobileSessionDTO,
+): LegacyMobileSession {
+  return {
+    user:
+      dto.user === null
+        ? null
+        : {
+            username: dto.user.username,
+            id: dto.user.id,
+            avatar: dto.user.avatar,
+            mfa: dto.user.mfa,
+            avatarUrl: dto.user.avatar_url,
+            nickname: dto.user.nickname,
+            avatarDecorationData: dto.user.avatar_decoration_data ?? null,
+          },
+    sessionToken: dto.PHPSESSID,
+    action: dto.action,
+  };
+}
