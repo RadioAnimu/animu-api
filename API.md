@@ -371,9 +371,9 @@ auth.clearSession();                     // forget it locally
 | Field | Required | Notes |
 | --- | --- | --- |
 | `provider` | no | defaults to `discord` |
-| `code` | yes | authorization code |
-| `redirectUri` | yes | must match the authorize step |
-| `codeVerifier` | no | PKCE verifier |
+| `code` | yes | authorization code, or the native Google `serverAuthCode` |
+| `redirectUri` | no* | *required for every provider except native Google Sign-In, which omits it |
+| `codeVerifier` | no | PKCE verifier (Discord/Google browser + PKCE flow) |
 
 | | |
 | --- | --- |
@@ -382,6 +382,16 @@ auth.clearSession();                     // forget it locally
 
 > `action` is `registered` (new account) or `login` (returning). The returned
 > token is stored on the client automatically.
+>
+> **Native Google Sign-In (`serverAuthCode`)**: send only
+> `provider: "google"` + the platform SDK's `serverAuthCode` as `code` — no
+> `redirectUri`, no PKCE. The server redeems it with the **web** OAuth client
+> (`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`); the app's native `serverClientId`
+> is that web client id.
+>
+> ```ts
+> await auth.exchangeToken({ provider: "google", code: serverAuthCode });
+> ```
 
 ## 14. Native Login — `nativeLogin(params)`
 
@@ -479,8 +489,8 @@ auth.clearSession();                     // forget it locally
 | Field | Required | Notes |
 | --- | --- | --- |
 | `provider` | yes | must be configured |
-| `code` | yes | authorization code |
-| `redirectUri` | yes | must match the authorize step |
+| `code` | yes | authorization code, or the native Google `serverAuthCode` |
+| `redirectUri` | no* | *required except for native Google Sign-In, which omits it |
 | `codeVerifier` | no | PKCE verifier |
 | `user` | no | Apple only: `user` JSON from the first consent callback |
 
@@ -490,7 +500,8 @@ auth.clearSession();                     // forget it locally
 | **Errors** | `missing_params`, `unknown_provider`, `link_failed`, `provider_error`, `link_conflict` |
 
 > Run the provider's OAuth redirect yourself and post the code back — the same
-> pattern as `exchangeToken`, but authenticated.
+> pattern as `exchangeToken`, but authenticated. Native Google linking accepts
+> only `provider: "google"` + `serverAuthCode` (no `redirectUri`).
 
 ## 21. Unlink Provider — `unlinkProvider(provider, sessionId?)`
 
@@ -570,5 +581,6 @@ prefer the v5 methods above.
 
 > `legacyExchangeToken` failure bodies (`{ error, message? }`) are returned at
 > HTTP 200; the client still throws an `AnimuApiError` carrying `error` as
-> `.code`. The older `AnimuApi.exchangeToken` / `validateSession` / `logout`
-> methods target the original `/teste/*` legacy endpoints.
+> `.code`. It also accepts the native Google `serverAuthCode` shape (no
+> `redirect_uri`). The older `AnimuApi.exchangeToken` / `validateSession` /
+> `logout` methods target the original `/teste/*` legacy endpoints.

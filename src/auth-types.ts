@@ -141,10 +141,20 @@ export interface AuthImage {
 export interface AuthExchangeParams {
   /** Defaults to `"discord"` server-side when omitted. */
   provider?: AuthProviderName;
+  /**
+   * OAuth authorization code. For native Google Sign-In, pass the platform
+   * SDK's `serverAuthCode` here.
+   */
   code: string;
-  /** Must match the redirect URI used for the authorize step. */
-  redirectUri: string;
-  /** PKCE code verifier (Discord mobile flow). */
+  /**
+   * The exact redirect URI used for the authorize step.
+   *
+   * Required for every provider **except** native Google Sign-In
+   * (`provider: "google"`), which omits it — the server redeems the
+   * `serverAuthCode` with the web OAuth client.
+   */
+  redirectUri?: string;
+  /** PKCE code verifier (Discord/Google browser + PKCE flow). */
   codeVerifier?: string;
 }
 
@@ -167,8 +177,18 @@ export interface AuthSetCredentialsParams {
 /** Parameters for linking an additional provider via its OAuth code. */
 export interface AuthLinkParams {
   provider: AuthProviderName;
+  /**
+   * OAuth authorization code. For native Google Sign-In, pass the platform
+   * SDK's `serverAuthCode` here.
+   */
   code: string;
-  redirectUri: string;
+  /**
+   * The exact redirect URI used for the authorize step. Required for every
+   * provider **except** native Google Sign-In (`provider: "google"`), which
+   * omits it.
+   */
+  redirectUri?: string;
+  /** PKCE verifier, when the provider requires it. */
   codeVerifier?: string;
   /** Apple only: the JSON `user` field from the initial consent callback. */
   user?: string;

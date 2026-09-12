@@ -116,6 +116,20 @@ describe("exchangeToken", () => {
     expect(String(calls[0]!.body)).not.toContain("code_verifier=");
   });
 
+  it("supports native Google Sign-In with no redirect_uri", async () => {
+    const { fn, calls } = mockFetch([
+      { match: () => true, reply: () => jsonResponse({ ok: true, data: { session_token: "g-sess", action: "registered", user: userPayload } }) },
+    ]);
+
+    await auth(fn).exchangeToken({ provider: "google", code: "server-auth-code" });
+
+    const body = String(calls[0]!.body);
+    expect(body).toContain("provider=google");
+    expect(body).toContain("code=server-auth-code");
+    expect(body).not.toContain("redirect_uri=");
+    expect(body).not.toContain("code_verifier=");
+  });
+
   it("surfaces the server error code on failure", async () => {
     const { fn } = mockFetch([
       { match: () => true, reply: () => jsonResponse({ ok: false, error: { code: "token_exchange_failed", message: "invalid_grant" } }, 401) },
@@ -289,6 +303,20 @@ describe("link / unlink", () => {
     expect(body).toContain("user=%7B%22name%22%3A%22Nova%22%7D");
     expect(result.action).toBe("linked");
     expect(result.linkedProviders.map((p) => p.provider)).toEqual(["discord", "google"]);
+  });
+
+  it("links native Google without a redirect_uri", async () => {
+    const { fn, calls } = mockFetch([
+      { match: (u) => u.endsWith("/api/v5/me/link.php"), reply: () => jsonResponse({ ok: true, data: { action: "linked", provider: "google", user: linkUser(), linked_providers: [] } }) },
+    ]);
+
+    const result = await auth(fn, "s").linkProvider({ provider: "google", code: "server-auth-code" });
+
+    const body = String(calls[0]!.body);
+    expect(body).toContain("provider=google");
+    expect(body).toContain("code=server-auth-code");
+    expect(body).not.toContain("redirect_uri=");
+    expect(result.provider).toBe("google");
   });
 
   it("surfaces last_provider on unlink", async () => {
@@ -479,6 +507,16 @@ describe("legacy mobile contract", () => {
     ]);
     const session = await auth(fn).legacyExchangeToken({ code: "c", redirectUri: "r" });
     expect(session.user).toBeNull();
+  });
+
+  it("legacyExchangeToken supports native Google without a redirect_uri", async () => {
+    const { fn, calls } = mockFetch([
+      { match: () => true, reply: () => jsonResponse({ user: null, PHPSESSID: "g", action: "registered" }) },
+    ]);
+    await auth(fn).legacyExchangeToken({ provider: "google", code: "server-auth-code" });
+    const body = String(calls[0]!.body);
+    expect(body).toContain("provider=google");
+    expect(body).not.toContain("redirect_uri=");
   });
 
   it("legacyExchangeToken surfaces a 200 body error as a code", async () => {

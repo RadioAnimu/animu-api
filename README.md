@@ -56,6 +56,10 @@ await auth.logout();
 Server failures throw `AnimuApiError` with `.statusCode` and a machine-readable
 `.code` (e.g. `token_exchange_failed`, `last_provider`, `no_banner`).
 
+Native Google Sign-In (React Native / iOS / Android) exchanges the platform
+SDK's `serverAuthCode` with no `redirectUri`/PKCE:
+`auth.exchangeToken({ provider: "google", code: serverAuthCode })`.
+
 ## Configuration
 
 All options are optional.

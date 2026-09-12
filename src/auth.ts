@@ -131,6 +131,11 @@ export class AnimuAuth {
    * The PKCE exchange happens on the Animu server; your client secret never
    * touches this library.
    *
+   * **Native Google Sign-In**: send `provider: "google"` with the platform
+   * SDK's `serverAuthCode` as `code` and no `redirectUri`/`codeVerifier`. The
+   * server redeems it with the web OAuth client (the native SDK's
+   * `serverClientId`). All other providers require `redirectUri`.
+   *
    * @throws {AnimuApiError} `400 missing_params`, `404 unknown_provider`,
    * `401 token_exchange_failed`.
    */
@@ -268,6 +273,10 @@ export class AnimuAuth {
    * Links an additional provider without a browser session: run the
    * provider's OAuth redirect yourself and post the resulting code back —
    * exactly like {@link exchangeToken}.
+   *
+   * **Native Google Sign-In**: linking Google can also send only
+   * `provider: "google"` + the platform SDK's `serverAuthCode` as `code`, with
+   * no `redirectUri`.
    *
    * @throws {AnimuApiError} `400 link_failed`, `401 provider_error`,
    * `404 unknown_provider`, `409 link_conflict`.
@@ -415,6 +424,8 @@ export class AnimuAuth {
    * exchange as {@link exchangeToken}, but returns the shape the unmodified
    * app and pedidos scripts expect (`{ user, PHPSESSID, action }`, no
    * envelope). Prefer {@link exchangeToken}.
+   *
+   * Accepts the same native Google `serverAuthCode` shape (no `redirectUri`).
    *
    * On failure the endpoint replies HTTP 200 with `{ error, message? }`; this
    * throws an {@link AnimuApiError} carrying that `error` as `.code`.
