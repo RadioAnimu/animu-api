@@ -63,7 +63,9 @@ SDK's `serverAuthCode` with no `redirectUri`/PKCE:
 Alternatively, Google can log in server-side (like Discord, no native SDK):
 open `auth.googleMobileStartUrl()` in a browser session, then feed the deep
 link back to `auth.completeMobileGoogleLogin(url)` — it parses `token`/`error`
-and adopts the session.
+and adopts the session. Pass the current session token
+(`googleMobileStartUrl(auth.sessionToken)`) to **link** Google to the account
+instead (`action=linked`, token unchanged).
 
 ## Configuration
 
@@ -125,7 +127,7 @@ new AnimuApi({
 | `getBanner(sessionId?)` | Banner bytes |
 | `deleteAccount(sessionId?)` | Permanently delete the account |
 | `browserLoginUrl(provider?)` | Browser login deep-link |
-| `googleMobileStartUrl()` | Server-side mobile Google login start URL |
+| `googleMobileStartUrl(sessionId?)` | Server-side mobile Google start URL (login, or link with a session token) |
 | `completeMobileGoogleLogin(callbackUrl)` | Parse the deep link + adopt the token |
 | `legacyExchangeToken(params)` | Legacy `/mobile` OAuth exchange (`discord_data`) |
 | `legacySessionStatus(sessionId)` | Legacy Discord session check |

@@ -551,6 +551,20 @@ describe("server-side mobile Google login", () => {
     expect(auth(vi.fn()).googleMobileStartUrl()).toBe(`${BASE}/mobile/google-start.php`);
   });
 
+  it("appends the session token for link mode", () => {
+    const client = auth(vi.fn());
+    expect(client.googleMobileStartUrl("php-sess 1")).toBe(`${BASE}/mobile/google-start.php?sid=php-sess%201`);
+    // no implicit use of the stored token — login must stay a login
+    expect(auth(vi.fn(), "stored").googleMobileStartUrl()).toBe(`${BASE}/mobile/google-start.php`);
+  });
+
+  it("handles a linked bounce (action=linked, same token)", () => {
+    const client = auth(vi.fn(), "php-sess-9");
+    const result = client.completeMobileGoogleLogin("animuapp://redirect?token=php-sess-9&action=linked&user_id=42");
+    expect(result).toEqual({ ok: true, token: "php-sess-9", action: "linked", userId: 42 });
+    expect(client.sessionToken).toBe("php-sess-9");
+  });
+
   it("parses the deep link and adopts the token", () => {
     const client = auth(vi.fn());
 

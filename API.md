@@ -593,23 +593,36 @@ if (!parsed.ok) throw new Error(`${parsed.error}${parsed.message ? `: ${parsed.m
 const profile = await auth.getProfile();
 ```
 
+**Linking** (Account screen "add provider") uses the same flow with the current
+session token — pass it to `googleMobileStartUrl(sessionId)`:
+
+```ts
+const result = await WebBrowser.openAuthSessionAsync(
+  auth.googleMobileStartUrl(auth.sessionToken!), // <base>/mobile/google-start.php?sid=<token>
+  "animuapp://redirect",
+);
+const parsed = auth.completeMobileGoogleLogin(result.url);
+// parsed.action === "linked"; the token is unchanged (linking never rotates it)
+```
+
 | Method | Purpose |
 | --- | --- |
-| `googleMobileStartUrl()` | `<base>/mobile/google-start.php` — the URL to open in the browser session |
-| `completeMobileGoogleLogin(callbackUrl)` | Parses the deep link and, on success, adopts the token. Returns `{ ok: true, token, action, userId }` or `{ ok: false, error, message }` |
+| `googleMobileStartUrl(sessionId?)` | `<base>/mobile/google-start.php` (login) or `…?sid=<token>` (link). The sid must be authenticated server-side, else HTTP 401 |
+| `completeMobileGoogleLogin(callbackUrl)` | Parses the deep link and, on success, adopts the token. Returns `{ ok: true, token, action, userId }` (`action` is `login`/`registered`/`linked`) or `{ ok: false, error, message }` |
 
 The backend issues the CSRF state + PKCE and stores the verifier server-side
 (the app never sees it), redirects to Google with `oauth-callback.php` as the
 `redirect_uri`, then 302s:
 
 ```text
-animuapp://redirect?token=<PHPSESSID>&action=<login|registered>&user_id=<id>
+animuapp://redirect?token=<PHPSESSID>&action=<login|registered|linked>&user_id=<id>
 animuapp://redirect?error=link_conflict|state|oauth[&msg=…]
 ```
 
 `parseMobileGoogleRedirect(callbackUrl)` is also exported standalone. Google
 links land in the same `linked_accounts` row as the web flow, so an account
-merges across web and app.
+merges across web and app; a Google identity already owned by another profile
+yields `link_conflict`.
 
 ## Legacy mobile contract
 

@@ -494,7 +494,7 @@ export class AnimuAuth {
 
   /**
    * URL to open in a browser session to start **server-side mobile Google
-   * login** (`/mobile/google-start.php`). Use it with
+   * auth** (`/mobile/google-start.php`). Use it with
    * `WebBrowser.openAuthSessionAsync(url, "<GOOGLE_MOBILE_REDIRECT_URI>")`.
    *
    * Google's web OAuth client rejects custom-scheme redirect URIs, so unlike
@@ -503,9 +503,15 @@ export class AnimuAuth {
    * token to the app deep link — no native Google SDK, package or SHA-1
    * registration. Hand the intercepted deep link to
    * {@link completeMobileGoogleLogin}.
+   *
+   * @param sessionId - Omit to **log in** (new/returning account). Pass the
+   * current session token to **link** Google to that account instead — the
+   * server requires the token to be authenticated (else HTTP 401) and the
+   * callback bounces `action: "linked"` with the token unchanged.
    */
-  googleMobileStartUrl(): string {
-    return this.mobileUrl("google-start.php");
+  googleMobileStartUrl(sessionId?: string): string {
+    const url = this.mobileUrl("google-start.php");
+    return sessionId ? `${url}?sid=${encodeURIComponent(sessionId)}` : url;
   }
 
   /**
@@ -514,8 +520,12 @@ export class AnimuAuth {
    * `X-Session-Id`). Returns the parse result instead of throwing so callers
    * can branch on `ok`.
    *
+   * `action` is `"login"`/`"registered"` for a login and `"linked"` for a link
+   * (the token is then the same one that was passed to
+   * {@link googleMobileStartUrl}).
+   *
    * @param callbackUrl - The URL the browser session was redirected to, e.g.
-   * `animuapp://redirect?token=…&action=login&user_id=1` or
+   * `animuapp://redirect?token=…&action=linked&user_id=1` or
    * `animuapp://redirect?error=oauth&msg=…`.
    */
   completeMobileGoogleLogin(callbackUrl: string): MobileGoogleRedirect {
