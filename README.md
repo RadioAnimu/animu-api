@@ -79,7 +79,9 @@ SDK): open `auth.mobileStartUrl("discord" | "google" | "apple")` in a browser
 session, then feed the deep link back to `auth.completeMobileAuth(url)` — it
 parses `token`/`error` and adopts the session. Pass the current session token
 (`mobileStartUrl(provider, auth.sessionToken)`) to **link** the provider to the
-account instead (`action=linked`, token unchanged).
+account instead (`action=linked`, token unchanged). The pending OAuth state is
+DB-backed, so the callback works even when the browser drops the session cookie
+(Apple `form_post`, Android Custom Tabs).
 
 ## Configuration
 

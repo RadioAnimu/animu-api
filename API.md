@@ -651,6 +651,10 @@ animuapp://redirect?token=<PHPSESSID>&action=<login|registered|linked>&user_id=<
 animuapp://redirect?error=link_conflict|state|oauth[&msg=…]
 ```
 
+The pending OAuth state lives in a server-side DB table (not the session
+cookie), so the callback resolves it even when the browser drops the cookie —
+Apple's cross-site `form_post` POST and Android Custom Tabs included.
+
 `parseMobileAuthRedirect(callbackUrl)` (and the deprecated
 `parseMobileGoogleRedirect`) are also exported standalone. Provider links land
 in the same `linked_accounts` row as the web flow, so an account merges across
