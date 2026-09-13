@@ -60,6 +60,11 @@ Native Google Sign-In (React Native / iOS / Android) exchanges the platform
 SDK's `serverAuthCode` with no `redirectUri`/PKCE:
 `auth.exchangeToken({ provider: "google", code: serverAuthCode })`.
 
+Alternatively, Google can log in server-side (like Discord, no native SDK):
+open `auth.googleMobileStartUrl()` in a browser session, then feed the deep
+link back to `auth.completeMobileGoogleLogin(url)` — it parses `token`/`error`
+and adopts the session.
+
 ## Configuration
 
 All options are optional.
@@ -120,6 +125,8 @@ new AnimuApi({
 | `getBanner(sessionId?)` | Banner bytes |
 | `deleteAccount(sessionId?)` | Permanently delete the account |
 | `browserLoginUrl(provider?)` | Browser login deep-link |
+| `googleMobileStartUrl()` | Server-side mobile Google login start URL |
+| `completeMobileGoogleLogin(callbackUrl)` | Parse the deep link + adopt the token |
 | `legacyExchangeToken(params)` | Legacy `/mobile` OAuth exchange (`discord_data`) |
 | `legacySessionStatus(sessionId)` | Legacy Discord session check |
 | `legacySessionLogout(sessionId)` | Legacy Discord session logout |

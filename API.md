@@ -567,6 +567,50 @@ Session required.
 | --- | --- |
 | `browserLoginUrl(provider?)` | `…/login.php` or `…/login.php?start=<provider>` for the HTML flow |
 
+## Server-side mobile Google login
+
+Google's web OAuth client rejects custom-scheme redirect URIs, so (unlike
+Discord) the app can't drive the Google redirect itself. Instead the **backend**
+is the redirect target and bounces the session back over the app's deep link —
+no native Google SDK, package or SHA-1 registration.
+
+```ts
+import * as WebBrowser from "expo-web-browser";
+
+// 1. Open the backend start URL inside a browser session (custom tabs /
+//    ASWebAuthenticationSession — NOT a bare WebView, Google rejects it).
+const result = await WebBrowser.openAuthSessionAsync(
+  auth.googleMobileStartUrl(),          // <base>/mobile/google-start.php
+  "animuapp://redirect",                // GOOGLE_MOBILE_REDIRECT_URI
+);
+if (result.type !== "success") return;
+
+// 2. Parse the deep link and adopt the token (returns a discriminated result).
+const parsed = auth.completeMobileGoogleLogin(result.url);
+if (!parsed.ok) throw new Error(`${parsed.error}${parsed.message ? `: ${parsed.message}` : ""}`);
+
+// 3. The session token is now stored — use the profile/API as usual.
+const profile = await auth.getProfile();
+```
+
+| Method | Purpose |
+| --- | --- |
+| `googleMobileStartUrl()` | `<base>/mobile/google-start.php` — the URL to open in the browser session |
+| `completeMobileGoogleLogin(callbackUrl)` | Parses the deep link and, on success, adopts the token. Returns `{ ok: true, token, action, userId }` or `{ ok: false, error, message }` |
+
+The backend issues the CSRF state + PKCE and stores the verifier server-side
+(the app never sees it), redirects to Google with `oauth-callback.php` as the
+`redirect_uri`, then 302s:
+
+```text
+animuapp://redirect?token=<PHPSESSID>&action=<login|registered>&user_id=<id>
+animuapp://redirect?error=link_conflict|state|oauth[&msg=…]
+```
+
+`parseMobileGoogleRedirect(callbackUrl)` is also exported standalone. Google
+links land in the same `linked_accounts` row as the web flow, so an account
+merges across web and app.
+
 ## Legacy mobile contract
 
 The unmodified mobile app and the pedidos scripts use non-enveloped endpoints
@@ -584,3 +628,7 @@ prefer the v5 methods above.
 > `.code`. It also accepts the native Google `serverAuthCode` shape (no
 > `redirect_uri`). The older `AnimuApi.exchangeToken` / `validateSession` /
 > `logout` methods target the original `/teste/*` legacy endpoints.
+>
+> The server-side mobile Google flow does **not** use `/mobile/exchange-token.php`
+> — it starts at `/mobile/google-start.php` and the backend redeems the code
+> itself (see above).

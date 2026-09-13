@@ -218,6 +218,30 @@ export interface LegacyMobileSession {
   action: AuthAction;
 }
 
+/**
+ * Result of intercepting the deep link the server bounces after **server-side
+ * mobile Google login** (`/mobile/google-start.php`).
+ *
+ * Success: `<GOOGLE_MOBILE_REDIRECT_URI>?token=<PHPSESSID>&action=…&user_id=…`
+ * Failure: `<GOOGLE_MOBILE_REDIRECT_URI>?error=link_conflict|state|oauth[&msg=…]`
+ */
+export type MobileGoogleRedirect =
+  | {
+      ok: true;
+      /** Session token (`PHPSESSID`); adopted by `completeMobileGoogleLogin`. */
+      token: string;
+      action: AuthAction;
+      /** Numeric user id from the bounce (`0` when absent). */
+      userId: number;
+    }
+  | {
+      ok: false;
+      /** `link_conflict` | `state` | `oauth`, or `missing_token` if absent. */
+      error: string;
+      /** Provider/error detail when the server supplied one. */
+      message: string | null;
+    };
+
 /** Constructor options for {@link AnimuAuth}. All fields are optional. */
 export interface AnimuAuthOptions {
   /**

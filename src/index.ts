@@ -53,6 +53,7 @@ export {
   bannerFromDTO,
   legacyMobileSessionFromDTO,
   linkedProviderFromDTO,
+  parseMobileGoogleRedirect,
   providerListFromDTO,
   sessionStatusFromDTO,
 } from "./auth-mappers.js";

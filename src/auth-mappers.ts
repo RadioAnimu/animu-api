@@ -23,6 +23,7 @@ import type {
   AuthUser,
   LegacyMobileSession,
   LinkedProvider,
+  MobileGoogleRedirect,
   ProviderInfo,
 } from "./auth-types.js";
 
@@ -194,5 +195,33 @@ export function legacyMobileSessionFromDTO(
           },
     sessionToken: dto.PHPSESSID,
     action: dto.action,
+  };
+}
+
+/**
+ * Parses the deep link the server bounces after **server-side mobile Google
+ * login** (`/mobile/google-start.php`). Accepts the full URL or just its query
+ * string, and is tolerant of custom schemes (e.g. `animuapp://redirect?token=…`).
+ */
+export function parseMobileGoogleRedirect(url: string): MobileGoogleRedirect {
+  const queryIndex = url.indexOf("?");
+  const query = queryIndex >= 0 ? url.slice(queryIndex + 1) : url;
+  const params = new URLSearchParams(query);
+
+  const error = params.get("error");
+  if (error) {
+    return { ok: false, error, message: params.get("msg") };
+  }
+
+  const token = params.get("token");
+  if (!token) {
+    return { ok: false, error: "missing_token", message: null };
+  }
+
+  return {
+    ok: true,
+    token,
+    action: params.get("action") ?? "login",
+    userId: Number(params.get("user_id")) || 0,
   };
 }

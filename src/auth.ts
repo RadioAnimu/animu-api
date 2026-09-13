@@ -25,6 +25,7 @@ import {
   authUnlinkFromDTO,
   avatarUrlFromDTO,
   legacyMobileSessionFromDTO,
+  parseMobileGoogleRedirect,
   providerListFromDTO,
   sessionStatusFromDTO,
 } from "./auth-mappers.js";
@@ -44,6 +45,7 @@ import type {
   AuthSetCredentialsParams,
   AuthUnlinkResult,
   LegacyMobileSession,
+  MobileGoogleRedirect,
   ProviderInfo,
 } from "./auth-types.js";
 
@@ -486,6 +488,40 @@ export class AnimuAuth {
     );
     if (sessionId === this.token) this.token = null;
     return data === "1";
+  }
+
+  // ─── Server-side mobile Google login ────────────────────────────────────
+
+  /**
+   * URL to open in a browser session to start **server-side mobile Google
+   * login** (`/mobile/google-start.php`). Use it with
+   * `WebBrowser.openAuthSessionAsync(url, "<GOOGLE_MOBILE_REDIRECT_URI>")`.
+   *
+   * Google's web OAuth client rejects custom-scheme redirect URIs, so unlike
+   * Discord the app can't drive the redirect itself: the backend issues the
+   * state + PKCE, acts as Google's redirect target, then bounces the session
+   * token to the app deep link — no native Google SDK, package or SHA-1
+   * registration. Hand the intercepted deep link to
+   * {@link completeMobileGoogleLogin}.
+   */
+  googleMobileStartUrl(): string {
+    return this.mobileUrl("google-start.php");
+  }
+
+  /**
+   * Parses the deep-link callback from the server-side mobile Google flow and,
+   * on success, adopts the session token (usable immediately via
+   * `X-Session-Id`). Returns the parse result instead of throwing so callers
+   * can branch on `ok`.
+   *
+   * @param callbackUrl - The URL the browser session was redirected to, e.g.
+   * `animuapp://redirect?token=…&action=login&user_id=1` or
+   * `animuapp://redirect?error=oauth&msg=…`.
+   */
+  completeMobileGoogleLogin(callbackUrl: string): MobileGoogleRedirect {
+    const result = parseMobileGoogleRedirect(callbackUrl);
+    if (result.ok) this.token = result.token;
+    return result;
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────

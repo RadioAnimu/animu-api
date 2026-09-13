@@ -545,3 +545,47 @@ describe("legacy mobile contract", () => {
     expect(client.sessionToken).toBeNull();
   });
 });
+
+describe("server-side mobile Google login", () => {
+  it("exposes the google-start URL", () => {
+    expect(auth(vi.fn()).googleMobileStartUrl()).toBe(`${BASE}/mobile/google-start.php`);
+  });
+
+  it("parses the deep link and adopts the token", () => {
+    const client = auth(vi.fn());
+
+    const result = client.completeMobileGoogleLogin("animuapp://redirect?token=php-sess-9&action=registered&user_id=42");
+
+    expect(result).toEqual({ ok: true, token: "php-sess-9", action: "registered", userId: 42 });
+    expect(client.sessionToken).toBe("php-sess-9");
+  });
+
+  it("defaults action to login and userId to 0 when absent", () => {
+    const result = auth(vi.fn()).completeMobileGoogleLogin("animuapp://redirect?token=t");
+    expect(result).toEqual({ ok: true, token: "t", action: "login", userId: 0 });
+  });
+
+  it("reports error bounces without touching the token", () => {
+    const client = auth(vi.fn(), "existing");
+
+    expect(client.completeMobileGoogleLogin("animuapp://redirect?error=link_conflict")).toEqual({
+      ok: false,
+      error: "link_conflict",
+      message: null,
+    });
+    expect(client.completeMobileGoogleLogin("animuapp://redirect?error=oauth&msg=boom")).toEqual({
+      ok: false,
+      error: "oauth",
+      message: "boom",
+    });
+    expect(client.sessionToken).toBe("existing");
+  });
+
+  it("flags a missing token", () => {
+    expect(auth(vi.fn()).completeMobileGoogleLogin("animuapp://redirect?action=login")).toEqual({
+      ok: false,
+      error: "missing_token",
+      message: null,
+    });
+  });
+});
