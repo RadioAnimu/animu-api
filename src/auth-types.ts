@@ -141,25 +141,38 @@ export interface AuthImage {
   contentType: string;
 }
 
-/** Parameters for exchanging an OAuth authorization code for a session. */
+/** Parameters for exchanging an OAuth code (or native identity token) for a session. */
 export interface AuthExchangeParams {
   /** Defaults to `"discord"` server-side when omitted. */
   provider?: AuthProviderName;
   /**
    * OAuth authorization code. For native Google Sign-In, pass the platform
-   * SDK's `serverAuthCode` here.
+   * SDK's `serverAuthCode` here. Required unless {@link identityToken} is sent.
    */
-  code: string;
+  code?: string;
+  /**
+   * Native **Sign in with Apple** RS256 `identityToken` (the `id_token` from
+   * `expo-apple-authentication` / `ASAuthorization`). An alternative to `code`:
+   * the server verifies it against Apple's JWKS — no `redirectUri`, PKCE,
+   * Services ID or `.p8` involved.
+   */
+  identityToken?: string;
   /**
    * The exact redirect URI used for the authorize step.
    *
    * Required for every provider **except** native Google Sign-In
-   * (`provider: "google"`), which omits it — the server redeems the
-   * `serverAuthCode` with the web OAuth client.
+   * (`provider: "google"`) and Apple identity-token login, which omit it — the
+   * server redeems those itself.
    */
   redirectUri?: string;
-  /** PKCE code verifier (Discord/Google browser + PKCE flow). */
+  /** PKCE code verifier (Discord/Google/Apple browser + PKCE flow). */
   codeVerifier?: string;
+  /** Apple identity-token only: full name (Apple sends it on the first consent only). */
+  name?: string;
+  /** Apple identity-token only: given name. */
+  firstName?: string;
+  /** Apple identity-token only: family name. */
+  lastName?: string;
 }
 
 /** Parameters for Animu Connect (native username/password) login. */
@@ -178,24 +191,35 @@ export interface AuthSetCredentialsParams {
   currentPassword?: string;
 }
 
-/** Parameters for linking an additional provider via its OAuth code. */
+/** Parameters for linking an additional provider via its OAuth code or native identity token. */
 export interface AuthLinkParams {
   provider: AuthProviderName;
   /**
    * OAuth authorization code. For native Google Sign-In, pass the platform
-   * SDK's `serverAuthCode` here.
+   * SDK's `serverAuthCode` here. Required unless {@link identityToken} is sent.
    */
-  code: string;
+  code?: string;
+  /**
+   * Native **Sign in with Apple** RS256 `identityToken` (the `id_token`). An
+   * alternative to `code` — verified against Apple's JWKS with no redirect/PKCE.
+   */
+  identityToken?: string;
   /**
    * The exact redirect URI used for the authorize step. Required for every
-   * provider **except** native Google Sign-In (`provider: "google"`), which
-   * omits it.
+   * provider **except** native Google Sign-In and Apple identity-token linking,
+   * which omit it.
    */
   redirectUri?: string;
   /** PKCE verifier, when the provider requires it. */
   codeVerifier?: string;
-  /** Apple only: the JSON `user` field from the initial consent callback. */
+  /** Apple form_post callback only: the JSON `user` field from the initial consent callback. */
   user?: string;
+  /** Apple identity-token only: full name. */
+  name?: string;
+  /** Apple identity-token only: given name. */
+  firstName?: string;
+  /** Apple identity-token only: family name. */
+  lastName?: string;
 }
 
 /**
@@ -224,15 +248,15 @@ export interface LegacyMobileSession {
 
 /**
  * Result of intercepting the deep link the server bounces after **server-side
- * mobile Google login** (`/mobile/google-start.php`).
+ * mobile auth** (`/mobile/google-start.php` or `/mobile/apple-start.php`).
  *
- * Success: `<GOOGLE_MOBILE_REDIRECT_URI>?token=<PHPSESSID>&action=…&user_id=…`
- * Failure: `<GOOGLE_MOBILE_REDIRECT_URI>?error=link_conflict|state|oauth[&msg=…]`
+ * Success: `<PROVIDER_MOBILE_REDIRECT_URI>?token=<PHPSESSID>&action=…&user_id=…`
+ * Failure: `<PROVIDER_MOBILE_REDIRECT_URI>?error=link_conflict|state|oauth[&msg=…]`
  */
-export type MobileGoogleRedirect =
+export type MobileAuthRedirect =
   | {
       ok: true;
-      /** Session token (`PHPSESSID`); adopted by `completeMobileGoogleLogin`. */
+      /** Session token (`PHPSESSID`); adopted by `completeMobileAuth`. */
       token: string;
       action: AuthAction;
       /** Numeric user id from the bounce (`0` when absent). */
@@ -245,6 +269,9 @@ export type MobileGoogleRedirect =
       /** Provider/error detail when the server supplied one. */
       message: string | null;
     };
+
+/** @deprecated Use {@link MobileAuthRedirect}; identical shape. */
+export type MobileGoogleRedirect = MobileAuthRedirect;
 
 /** Constructor options for {@link AnimuAuth}. All fields are optional. */
 export interface AnimuAuthOptions {

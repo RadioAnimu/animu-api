@@ -60,12 +60,26 @@ Native Google Sign-In (React Native / iOS / Android) exchanges the platform
 SDK's `serverAuthCode` with no `redirectUri`/PKCE:
 `auth.exchangeToken({ provider: "google", code: serverAuthCode })`.
 
-Alternatively, Google can log in server-side (like Discord, no native SDK):
-open `auth.googleMobileStartUrl()` in a browser session, then feed the deep
-link back to `auth.completeMobileGoogleLogin(url)` — it parses `token`/`error`
-and adopts the session. Pass the current session token
-(`googleMobileStartUrl(auth.sessionToken)`) to **link** Google to the account
-instead (`action=linked`, token unchanged).
+Native **Sign in with Apple** posts the SDK's RS256 `identityToken` (no
+`redirectUri`, Services ID or `.p8`); forward the name fields since Apple only
+sends them on first consent:
+
+```ts
+await auth.exchangeToken({
+  provider: "apple",
+  identityToken,
+  name: fullName,
+  firstName: givenName,
+  lastName: familyName,
+});
+```
+
+Alternatively, Discord, Google and Apple can log in server-side (no native
+SDK): open `auth.mobileStartUrl("discord" | "google" | "apple")` in a browser
+session, then feed the deep link back to `auth.completeMobileAuth(url)` — it
+parses `token`/`error` and adopts the session. Pass the current session token
+(`mobileStartUrl(provider, auth.sessionToken)`) to **link** the provider to the
+account instead (`action=linked`, token unchanged).
 
 ## Configuration
 
@@ -127,8 +141,8 @@ new AnimuApi({
 | `getBanner(sessionId?)` | Banner bytes |
 | `deleteAccount(sessionId?)` | Permanently delete the account |
 | `browserLoginUrl(provider?)` | Browser login deep-link |
-| `googleMobileStartUrl(sessionId?)` | Server-side mobile Google start URL (login, or link with a session token) |
-| `completeMobileGoogleLogin(callbackUrl)` | Parse the deep link + adopt the token |
+| `mobileStartUrl(provider, sessionId?)` | Server-side mobile auth start URL (Discord/Google/Apple; login, or link with a token) |
+| `completeMobileAuth(callbackUrl)` | Parse the deep link + adopt the token |
 | `legacyExchangeToken(params)` | Legacy `/mobile` OAuth exchange (`discord_data`) |
 | `legacySessionStatus(sessionId)` | Legacy Discord session check |
 | `legacySessionLogout(sessionId)` | Legacy Discord session logout |

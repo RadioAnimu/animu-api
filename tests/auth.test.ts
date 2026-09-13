@@ -130,6 +130,29 @@ describe("exchangeToken", () => {
     expect(body).not.toContain("code_verifier=");
   });
 
+  it("supports native Sign in with Apple via identity_token", async () => {
+    const { fn, calls } = mockFetch([
+      { match: () => true, reply: () => jsonResponse({ ok: true, data: { session_token: "a-sess", action: "registered", user: userPayload } }) },
+    ]);
+
+    await auth(fn).exchangeToken({
+      provider: "apple",
+      identityToken: "header.payload.signature",
+      name: "Haru Chan",
+      firstName: "Haru",
+      lastName: "Chan",
+    });
+
+    const body = String(calls[0]!.body);
+    expect(body).toContain("provider=apple");
+    expect(body).toContain("identity_token=header.payload.signature");
+    expect(body).toContain("name=Haru+Chan");
+    expect(body).toContain("first_name=Haru");
+    expect(body).toContain("last_name=Chan");
+    expect(body).not.toContain("code=");
+    expect(body).not.toContain("redirect_uri=");
+  });
+
   it("surfaces the server error code on failure", async () => {
     const { fn } = mockFetch([
       { match: () => true, reply: () => jsonResponse({ ok: false, error: { code: "token_exchange_failed", message: "invalid_grant" } }, 401) },
@@ -258,6 +281,27 @@ describe("getProfile", () => {
     await expect(auth(fn).getProfile()).rejects.toMatchObject({ code: "unauthenticated" });
     expect(fn).not.toHaveBeenCalled();
   });
+
+  it("maps provider username/name when the server supplies them", async () => {
+    const withIdentity = {
+      ...profile,
+      data: {
+        ...profile.data,
+        linked_providers: [
+          { provider: "discord", provider_user_id: "123", provider_email: null, provider_username: "nova_", provider_name: "Nova" },
+          { provider: "google", provider_user_id: "456", provider_email: "nova@example.com", provider_name: "Nova G" },
+        ],
+      },
+    };
+    const { fn } = mockFetch([{ match: () => true, reply: () => jsonResponse(withIdentity) }]);
+
+    const { linkedProviders } = await auth(fn, "s").getProfile();
+
+    expect(linkedProviders).toEqual([
+      { provider: "discord", providerUserId: "123", providerEmail: null, providerUsername: "nova_", providerName: "Nova" },
+      { provider: "google", providerUserId: "456", providerEmail: "nova@example.com", providerUsername: null, providerName: "Nova G" },
+    ]);
+  });
 });
 
 describe("refreshProfile", () => {
@@ -325,6 +369,26 @@ describe("link / unlink", () => {
     expect(body).toContain("code=server-auth-code");
     expect(body).not.toContain("redirect_uri=");
     expect(result.provider).toBe("google");
+  });
+
+  it("links native Sign in with Apple via identity_token", async () => {
+    const { fn, calls } = mockFetch([
+      { match: (u) => u.endsWith("/api/v5/me/link.php"), reply: () => jsonResponse({ ok: true, data: { action: "linked", provider: "apple", user: linkUser(), linked_providers: [] } }) },
+    ]);
+
+    await auth(fn, "s").linkProvider({
+      provider: "apple",
+      identityToken: "h.p.s",
+      firstName: "Haru",
+      lastName: "Chan",
+    });
+
+    const body = String(calls[0]!.body);
+    expect(body).toContain("provider=apple");
+    expect(body).toContain("identity_token=h.p.s");
+    expect(body).toContain("first_name=Haru");
+    expect(body).not.toContain("code=");
+    expect(body).not.toContain("redirect_uri=");
   });
 
   it("surfaces last_provider on unlink", async () => {
@@ -562,9 +626,22 @@ describe("legacy mobile contract", () => {
   });
 });
 
-describe("server-side mobile Google login", () => {
+describe("server-side mobile auth", () => {
   it("exposes the google-start URL", () => {
     expect(auth(vi.fn()).googleMobileStartUrl()).toBe(`${BASE}/mobile/google-start.php`);
+  });
+
+  it("exposes the apple-start URL", () => {
+    const client = auth(vi.fn());
+    expect(client.appleMobileStartUrl()).toBe(`${BASE}/mobile/apple-start.php`);
+    expect(client.mobileStartUrl("apple", "tok")).toBe(`${BASE}/mobile/apple-start.php?sid=tok`);
+    expect(client.mobileStartUrl("google")).toBe(`${BASE}/mobile/google-start.php`);
+  });
+
+  it("exposes the discord-start URL", () => {
+    const client = auth(vi.fn());
+    expect(client.discordMobileStartUrl()).toBe(`${BASE}/mobile/discord-start.php`);
+    expect(client.mobileStartUrl("discord", "tok")).toBe(`${BASE}/mobile/discord-start.php?sid=tok`);
   });
 
   it("appends the session token for link mode", () => {
@@ -572,6 +649,13 @@ describe("server-side mobile Google login", () => {
     expect(client.googleMobileStartUrl("php-sess 1")).toBe(`${BASE}/mobile/google-start.php?sid=php-sess%201`);
     // no implicit use of the stored token — login must stay a login
     expect(auth(vi.fn(), "stored").googleMobileStartUrl()).toBe(`${BASE}/mobile/google-start.php`);
+  });
+
+  it("parses a linked Apple bounce via completeMobileAuth", () => {
+    const client = auth(vi.fn());
+    const result = client.completeMobileAuth("animuapp://redirect?token=a-sess&action=linked&user_id=7");
+    expect(result).toEqual({ ok: true, token: "a-sess", action: "linked", userId: 7 });
+    expect(client.sessionToken).toBe("a-sess");
   });
 
   it("handles a linked bounce (action=linked, same token)", () => {

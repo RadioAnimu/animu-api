@@ -53,6 +53,7 @@ export {
   bannerFromDTO,
   legacyMobileSessionFromDTO,
   linkedProviderFromDTO,
+  parseMobileAuthRedirect,
   parseMobileGoogleRedirect,
   providerListFromDTO,
   sessionStatusFromDTO,

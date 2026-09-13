@@ -25,7 +25,7 @@ import {
   authUnlinkFromDTO,
   avatarUrlFromDTO,
   legacyMobileSessionFromDTO,
-  parseMobileGoogleRedirect,
+  parseMobileAuthRedirect,
   providerListFromDTO,
   sessionStatusFromDTO,
 } from "./auth-mappers.js";
@@ -45,7 +45,7 @@ import type {
   AuthSetCredentialsParams,
   AuthUnlinkResult,
   LegacyMobileSession,
-  MobileGoogleRedirect,
+  MobileAuthRedirect,
   ProviderInfo,
 } from "./auth-types.js";
 
@@ -126,9 +126,8 @@ export class AnimuAuth {
   }
 
   /**
-   * Exchanges an OAuth authorization code for a session. This is the primary
-   * login for mobile/desktop/CLI — the client runs the provider's redirect
-   * itself and posts the code back.
+   * Exchanges an OAuth authorization code — or a native identity token — for a
+   * session. This is the primary login for mobile/desktop/CLI.
    *
    * The PKCE exchange happens on the Animu server; your client secret never
    * touches this library.
@@ -136,7 +135,12 @@ export class AnimuAuth {
    * **Native Google Sign-In**: send `provider: "google"` with the platform
    * SDK's `serverAuthCode` as `code` and no `redirectUri`/`codeVerifier`. The
    * server redeems it with the web OAuth client (the native SDK's
-   * `serverClientId`). All other providers require `redirectUri`.
+   * `serverClientId`). All other code flows require `redirectUri`.
+   *
+   * **Native Sign in with Apple**: send `provider: "apple"` with the platform
+   * SDK's RS256 `identityToken` (and optional `name`/`firstName`/`lastName`) —
+   * no `code`, `redirectUri`, PKCE, Services ID or `.p8`. The server verifies
+   * it against Apple's JWKS.
    *
    * @throws {AnimuApiError} `400 missing_params`, `404 unknown_provider`,
    * `401 token_exchange_failed`.
@@ -147,8 +151,12 @@ export class AnimuAuth {
       await this.postForm("auth/exchange-token.php", {
         provider: params.provider,
         code: params.code,
+        identity_token: params.identityToken,
         redirect_uri: params.redirectUri,
         code_verifier: params.codeVerifier,
+        name: params.name,
+        first_name: params.firstName,
+        last_name: params.lastName,
       }),
     );
     const session = authSessionFromDTO(data, this.baseUrl);
@@ -280,6 +288,9 @@ export class AnimuAuth {
    * `provider: "google"` + the platform SDK's `serverAuthCode` as `code`, with
    * no `redirectUri`.
    *
+   * **Native Sign in with Apple**: link with `provider: "apple"` + the SDK's
+   * `identityToken` (no `code`/`redirectUri`).
+   *
    * @throws {AnimuApiError} `400 link_failed`, `401 provider_error`,
    * `404 unknown_provider`, `409 link_conflict`.
    */
@@ -294,9 +305,13 @@ export class AnimuAuth {
         {
           provider: params.provider,
           code: params.code,
+          identity_token: params.identityToken,
           redirect_uri: params.redirectUri,
           code_verifier: params.codeVerifier,
           user: params.user,
+          name: params.name,
+          first_name: params.firstName,
+          last_name: params.lastName,
         },
         this.requireSession(sessionId),
       ),
@@ -490,48 +505,84 @@ export class AnimuAuth {
     return data === "1";
   }
 
-  // ─── Server-side mobile Google login ────────────────────────────────────
+  // ─── Server-side mobile auth (Discord / Google / Apple) ─────────────────
 
   /**
-   * URL to open in a browser session to start **server-side mobile Google
-   * auth** (`/mobile/google-start.php`). Use it with
-   * `WebBrowser.openAuthSessionAsync(url, "<GOOGLE_MOBILE_REDIRECT_URI>")`.
+   * URL to open in a browser session to start **server-side mobile auth** for a
+   * provider (`/mobile/<provider>-start.php`). Use it with
+   * `WebBrowser.openAuthSessionAsync(url, "<PROVIDER_MOBILE_REDIRECT_URI>")`.
    *
-   * Google's web OAuth client rejects custom-scheme redirect URIs, so unlike
-   * Discord the app can't drive the redirect itself: the backend issues the
-   * state + PKCE, acts as Google's redirect target, then bounces the session
-   * token to the app deep link — no native Google SDK, package or SHA-1
-   * registration. Hand the intercepted deep link to
-   * {@link completeMobileGoogleLogin}.
+   * Every browser-capable provider exposes the same flow. Google's and Apple's
+   * web OAuth clients reject custom-scheme redirect URIs, so the app can't drive
+   * their redirect itself; Discord works app-side but shares the endpoint so all
+   * providers behave identically. The backend issues the state + PKCE, acts as
+   * the provider's redirect target, then bounces the session token to the app
+   * deep link — no native SDK, package or SHA-1 registration. Hand the
+   * intercepted deep link to {@link completeMobileAuth}.
    *
+   * @param provider - `"discord"`, `"google"` or `"apple"` (any configured
+   * `*-start.php` endpoint).
    * @param sessionId - Omit to **log in** (new/returning account). Pass the
-   * current session token to **link** Google to that account instead — the
+   * current session token to **link** the provider to that account instead — the
    * server requires the token to be authenticated (else HTTP 401) and the
    * callback bounces `action: "linked"` with the token unchanged.
    */
-  googleMobileStartUrl(sessionId?: string): string {
-    const url = this.mobileUrl("google-start.php");
+  mobileStartUrl(provider: AuthProviderName, sessionId?: string): string {
+    const url = this.mobileUrl(`${provider}-start.php`);
     return sessionId ? `${url}?sid=${encodeURIComponent(sessionId)}` : url;
   }
 
   /**
-   * Parses the deep-link callback from the server-side mobile Google flow and,
-   * on success, adopts the session token (usable immediately via
-   * `X-Session-Id`). Returns the parse result instead of throwing so callers
-   * can branch on `ok`.
+   * {@link mobileStartUrl} for Google (`/mobile/google-start.php`).
+   *
+   * @deprecated Prefer {@link mobileStartUrl} with `"google"`; kept as a
+   * convenience alias.
+   */
+  googleMobileStartUrl(sessionId?: string): string {
+    return this.mobileStartUrl("google", sessionId);
+  }
+
+  /**
+   * {@link mobileStartUrl} for Apple (`/mobile/apple-start.php`) — Apple posts
+   * the code back with `form_post`, which the backend callback handles.
+   */
+  appleMobileStartUrl(sessionId?: string): string {
+    return this.mobileStartUrl("apple", sessionId);
+  }
+
+  /**
+   * {@link mobileStartUrl} for Discord (`/mobile/discord-start.php`) — same
+   * flow as the other providers, for parity with the app-driven Discord flow.
+   */
+  discordMobileStartUrl(sessionId?: string): string {
+    return this.mobileStartUrl("discord", sessionId);
+  }
+
+  /**
+   * Parses the deep-link callback from a server-side mobile flow and, on
+   * success, adopts the session token (usable immediately via `X-Session-Id`).
+   * Returns the parse result instead of throwing so callers can branch on `ok`.
    *
    * `action` is `"login"`/`"registered"` for a login and `"linked"` for a link
-   * (the token is then the same one that was passed to
-   * {@link googleMobileStartUrl}).
+   * (the token is then the same one that was passed to {@link mobileStartUrl}).
    *
    * @param callbackUrl - The URL the browser session was redirected to, e.g.
    * `animuapp://redirect?token=…&action=linked&user_id=1` or
    * `animuapp://redirect?error=oauth&msg=…`.
    */
-  completeMobileGoogleLogin(callbackUrl: string): MobileGoogleRedirect {
-    const result = parseMobileGoogleRedirect(callbackUrl);
+  completeMobileAuth(callbackUrl: string): MobileAuthRedirect {
+    const result = parseMobileAuthRedirect(callbackUrl);
     if (result.ok) this.token = result.token;
     return result;
+  }
+
+  /**
+   * {@link completeMobileAuth} (Google-named alias).
+   *
+   * @deprecated Prefer {@link completeMobileAuth}; identical behaviour.
+   */
+  completeMobileGoogleLogin(callbackUrl: string): MobileAuthRedirect {
+    return this.completeMobileAuth(callbackUrl);
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────

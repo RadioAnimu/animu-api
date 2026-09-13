@@ -317,13 +317,14 @@ failures have `statusCode: 0` and no `code`).
 
 | HTTP | `code` | Meaning |
 | --- | --- | --- |
-| 400 | `missing_params` | `exchange-token`: missing `code`/`redirect_uri` |
+| 400 | `missing_params` | `exchange-token`: missing `code`/`identity_token`/`redirect_uri` |
 | 400 | `invalid_upload` | Avatar missing/unsupported/too large |
 | 400 | `link_failed` / `unlink_failed` | Link/unlink rejected |
-| 401 | `token_exchange_failed` | Provider rejected the OAuth code |
+| 401 | `token_exchange_failed` | Provider rejected the OAuth code / identity token |
 | 401 | `provider_error` | Provider rejected the code during a link |
 | 401 | `native_auth_failed` | Bad Animu Connect credentials or lockout |
 | 401 | `unauthenticated` | `me/*` without a valid session (also thrown client-side when no token is set) |
+| 403 | `forbidden_origin` | Cross-origin state-changing request authenticated by cookie (CSRF guard; bearer clients are unaffected) |
 | 404 | `unknown_provider` | Provider not configured |
 | 404 | `no_avatar` / `no_banner` | No image available |
 | 409 | `credentials_failed` | Validation, username conflict or missing current password |
@@ -371,9 +372,11 @@ auth.clearSession();                     // forget it locally
 | Field | Required | Notes |
 | --- | --- | --- |
 | `provider` | no | defaults to `discord` |
-| `code` | yes | authorization code, or the native Google `serverAuthCode` |
-| `redirectUri` | no* | *required for every provider except native Google Sign-In, which omits it |
-| `codeVerifier` | no | PKCE verifier (Discord/Google browser + PKCE flow) |
+| `code` | no* | authorization code, or the native Google `serverAuthCode`; *required unless `identityToken` is sent |
+| `identityToken` | no* | native **Sign in with Apple** RS256 `id_token`; *alternative to `code` |
+| `redirectUri` | no* | *required for every code flow except native Google Sign-In, which omits it |
+| `codeVerifier` | no | PKCE verifier (Discord/Google/Apple browser + PKCE flow) |
+| `name` / `firstName` / `lastName` | no | Apple `identityToken` only (Apple sends the name on first consent only) |
 
 | | |
 | --- | --- |
@@ -391,6 +394,22 @@ auth.clearSession();                     // forget it locally
 >
 > ```ts
 > await auth.exchangeToken({ provider: "google", code: serverAuthCode });
+> ```
+>
+> **Native Sign in with Apple (`identityToken`)**: send `provider: "apple"` +
+> the RS256 `identityToken` from `expo-apple-authentication` /
+> `ASAuthorization` — no `code`, `redirectUri`, PKCE, Services ID or `.p8`. The
+> server verifies it against Apple's JWKS (`APPLE_NATIVE_CLIENT_ID` = the app
+> id / bundle id). Apple only returns the name on first consent, so forward it:
+>
+> ```ts
+> await auth.exchangeToken({
+>   provider: "apple",
+>   identityToken,
+>   name: fullName,               // optional
+>   firstName: givenName,         // optional
+>   lastName: familyName,         // optional
+> });
 > ```
 
 ## 14. Native Login — `nativeLogin(params)`
@@ -448,7 +467,7 @@ auth.clearSession();                     // forget it locally
 | `user.avatarCustom` | `boolean` | `true` when a custom upload is set |
 | `banner.url` | `string \| null` | `me/banner.php` when cached; else `null` |
 | `banner.color` | `string \| null` | Discord accent color fallback |
-| `linkedProviders[]` | `{ provider, providerUserId, providerEmail }` | |
+| `linkedProviders[]` | `{ provider, providerUserId, providerEmail, providerUsername, providerName }` — the last two are `null` when the server has no such identity |
 | `session.loginProvider` | `string \| null` | `discord\|google\|apple\|native` |
 
 ## 18. Refresh — `refreshProfile(sessionId?)`
@@ -489,10 +508,12 @@ auth.clearSession();                     // forget it locally
 | Field | Required | Notes |
 | --- | --- | --- |
 | `provider` | yes | must be configured |
-| `code` | yes | authorization code, or the native Google `serverAuthCode` |
-| `redirectUri` | no* | *required except for native Google Sign-In, which omits it |
+| `code` | no* | authorization code, or the native Google `serverAuthCode`; *required unless `identityToken` is sent |
+| `identityToken` | no* | native **Sign in with Apple** `id_token`; *alternative to `code` |
+| `redirectUri` | no* | *required except for native Google Sign-In / Apple `identityToken` |
 | `codeVerifier` | no | PKCE verifier |
-| `user` | no | Apple only: `user` JSON from the first consent callback |
+| `user` | no | Apple `form_post` flow: `user` JSON from the first consent callback |
+| `name` / `firstName` / `lastName` | no | Apple `identityToken` only |
 
 | | |
 | --- | --- |
@@ -501,7 +522,8 @@ auth.clearSession();                     // forget it locally
 
 > Run the provider's OAuth redirect yourself and post the code back — the same
 > pattern as `exchangeToken`, but authenticated. Native Google linking accepts
-> only `provider: "google"` + `serverAuthCode` (no `redirectUri`).
+> only `provider: "google"` + `serverAuthCode` (no `redirectUri`); native Apple
+> linking accepts `provider: "apple"` + `identityToken`.
 
 ## 21. Unlink Provider — `unlinkProvider(provider, sessionId?)`
 
@@ -567,26 +589,34 @@ Session required.
 | --- | --- |
 | `browserLoginUrl(provider?)` | `…/login.php` or `…/login.php?start=<provider>` for the HTML flow |
 
-## Server-side mobile Google login
+## Server-side mobile auth (Discord / Google / Apple)
 
-Google's web OAuth client rejects custom-scheme redirect URIs, so (unlike
-Discord) the app can't drive the Google redirect itself. Instead the **backend**
-is the redirect target and bounces the session back over the app's deep link —
-no native Google SDK, package or SHA-1 registration.
+Every browser-capable provider exposes the same flow via
+`/mobile/<provider>-start.php`. Google's and Apple's web OAuth clients reject
+custom-scheme redirect URIs, so the app can't drive their redirect itself;
+Discord works app-side but shares the endpoint so all providers behave
+identically. The **backend** is the redirect target and bounces the session back
+over the app's deep link — no native SDK, package or SHA-1 registration.
+
+| Provider | Start endpoint | Deep-link variable | Callback |
+| --- | --- | --- | --- |
+| Discord | `/mobile/discord-start.php` | `DISCORD_MOBILE_REDIRECT_URI` | GET |
+| Google | `/mobile/google-start.php` | `GOOGLE_MOBILE_REDIRECT_URI` | GET |
+| Apple | `/mobile/apple-start.php` | `APPLE_MOBILE_REDIRECT_URI` | POST (`form_post`) |
 
 ```ts
 import * as WebBrowser from "expo-web-browser";
 
 // 1. Open the backend start URL inside a browser session (custom tabs /
-//    ASWebAuthenticationSession — NOT a bare WebView, Google rejects it).
+//    ASWebAuthenticationSession — NOT a bare WebView, providers reject it).
 const result = await WebBrowser.openAuthSessionAsync(
-  auth.googleMobileStartUrl(),          // <base>/mobile/google-start.php
-  "animuapp://redirect",                // GOOGLE_MOBILE_REDIRECT_URI
+  auth.mobileStartUrl("google"),         // <base>/mobile/google-start.php
+  "animuapp://redirect",                 // GOOGLE_MOBILE_REDIRECT_URI
 );
 if (result.type !== "success") return;
 
 // 2. Parse the deep link and adopt the token (returns a discriminated result).
-const parsed = auth.completeMobileGoogleLogin(result.url);
+const parsed = auth.completeMobileAuth(result.url);
 if (!parsed.ok) throw new Error(`${parsed.error}${parsed.message ? `: ${parsed.message}` : ""}`);
 
 // 3. The session token is now stored — use the profile/API as usual.
@@ -594,35 +624,38 @@ const profile = await auth.getProfile();
 ```
 
 **Linking** (Account screen "add provider") uses the same flow with the current
-session token — pass it to `googleMobileStartUrl(sessionId)`:
+session token — pass it as the second argument:
 
 ```ts
 const result = await WebBrowser.openAuthSessionAsync(
-  auth.googleMobileStartUrl(auth.sessionToken!), // <base>/mobile/google-start.php?sid=<token>
+  auth.mobileStartUrl("apple", auth.sessionToken!), // <base>/mobile/apple-start.php?sid=<token>
   "animuapp://redirect",
 );
-const parsed = auth.completeMobileGoogleLogin(result.url);
+const parsed = auth.completeMobileAuth(result.url);
 // parsed.action === "linked"; the token is unchanged (linking never rotates it)
 ```
 
 | Method | Purpose |
 | --- | --- |
-| `googleMobileStartUrl(sessionId?)` | `<base>/mobile/google-start.php` (login) or `…?sid=<token>` (link). The sid must be authenticated server-side, else HTTP 401 |
-| `completeMobileGoogleLogin(callbackUrl)` | Parses the deep link and, on success, adopts the token. Returns `{ ok: true, token, action, userId }` (`action` is `login`/`registered`/`linked`) or `{ ok: false, error, message }` |
+| `mobileStartUrl(provider, sessionId?)` | `<base>/mobile/<provider>-start.php` (login) or `…?sid=<token>` (link). `provider` is `"discord"`, `"google"` or `"apple"`; the sid must be authenticated server-side, else HTTP 401 |
+| `discordMobileStartUrl(sessionId?)` / `googleMobileStartUrl(sessionId?)` / `appleMobileStartUrl(sessionId?)` | Convenience aliases per provider (`discordMobileStartUrl` is new; `googleMobileStartUrl` is deprecated in favour of `mobileStartUrl`) |
+| `completeMobileAuth(callbackUrl)` | Parses the deep link and, on success, adopts the token. Returns `{ ok: true, token, action, userId }` (`action` is `login`/`registered`/`linked`) or `{ ok: false, error, message }` |
+| `completeMobileGoogleLogin(callbackUrl)` | Deprecated alias of `completeMobileAuth` |
 
 The backend issues the CSRF state + PKCE and stores the verifier server-side
-(the app never sees it), redirects to Google with `oauth-callback.php` as the
-`redirect_uri`, then 302s:
+(the app never sees it), redirects to the provider with `oauth-callback.php` as
+the `redirect_uri`, then 302s:
 
 ```text
 animuapp://redirect?token=<PHPSESSID>&action=<login|registered|linked>&user_id=<id>
 animuapp://redirect?error=link_conflict|state|oauth[&msg=…]
 ```
 
-`parseMobileGoogleRedirect(callbackUrl)` is also exported standalone. Google
-links land in the same `linked_accounts` row as the web flow, so an account
-merges across web and app; a Google identity already owned by another profile
-yields `link_conflict`.
+`parseMobileAuthRedirect(callbackUrl)` (and the deprecated
+`parseMobileGoogleRedirect`) are also exported standalone. Provider links land
+in the same `linked_accounts` row as the web flow, so an account merges across
+web and app; an identity already owned by another profile yields
+`link_conflict`.
 
 ## Legacy mobile contract
 
@@ -642,6 +675,6 @@ prefer the v5 methods above.
 > `redirect_uri`). The older `AnimuApi.exchangeToken` / `validateSession` /
 > `logout` methods target the original `/teste/*` legacy endpoints.
 >
-> The server-side mobile Google flow does **not** use `/mobile/exchange-token.php`
-> — it starts at `/mobile/google-start.php` and the backend redeems the code
+> The server-side mobile flows do **not** use `/mobile/exchange-token.php` —
+> they start at `/mobile/<provider>-start.php` and the backend redeems the code
 > itself (see above).
