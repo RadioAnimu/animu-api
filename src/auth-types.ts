@@ -61,6 +61,10 @@ export interface LinkedProvider {
   provider: AuthProviderName;
   providerUserId: string;
   providerEmail: string | null;
+  /** Provider @handle (e.g. Discord username), when the server supplies it. */
+  providerUsername: string | null;
+  /** Provider display name (e.g. Google name), when the server supplies it. */
+  providerName: string | null;
 }
 
 /** The account's profile banner. When `url` is `null` use `color`. */

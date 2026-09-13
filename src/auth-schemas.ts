@@ -87,6 +87,10 @@ export const LinkedProviderDTOSchema = z.object({
   provider: z.string(),
   provider_user_id: z.string(),
   provider_email: z.string().nullable().catch(null),
+  // Optional: the server only has these for some providers (Discord @username,
+  // Google display name). Tolerate their absence on older payloads.
+  provider_username: z.string().nullish().catch(null),
+  provider_name: z.string().nullish().catch(null),
 });
 
 const BannerDTOSchema = z.object({

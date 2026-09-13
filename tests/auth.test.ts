@@ -239,7 +239,15 @@ describe("getProfile", () => {
     expect(result.user.avatarCustom).toBe(true);
     expect(result.user.verified).toBe(true);
     expect(result.banner).toEqual({ url: `${BASE}/api/v5/me/banner.php`, color: "#42008c" });
-    expect(result.linkedProviders).toEqual([{ provider: "discord", providerUserId: "123", providerEmail: null }]);
+    expect(result.linkedProviders).toEqual([
+      {
+        provider: "discord",
+        providerUserId: "123",
+        providerEmail: null,
+        providerUsername: null,
+        providerName: null,
+      },
+    ]);
     expect(result.availableProviders).toHaveLength(2);
     expect(result.session).toEqual({ sessionId: "a1b2", loginProvider: "discord", lastActivity: 1783 });
     expect(result.links.avatar).toBe(`${BASE}/api/v5/me/avatar.php`);
@@ -334,7 +342,15 @@ describe("link / unlink", () => {
     ]);
     const result = await auth(fn, "s").unlinkProvider("discord");
     expect(result.needsSetup).toBe(true);
-    expect(result.linkedProviders).toEqual([{ provider: "google", providerUserId: "456", providerEmail: null }]);
+    expect(result.linkedProviders).toEqual([
+      {
+        provider: "google",
+        providerUserId: "456",
+        providerEmail: null,
+        providerUsername: null,
+        providerName: null,
+      },
+    ]);
   });
 });
 

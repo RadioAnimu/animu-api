@@ -86,6 +86,8 @@ export function linkedProviderFromDTO(dto: LinkedProviderDTO): LinkedProvider {
     provider: dto.provider,
     providerUserId: dto.provider_user_id,
     providerEmail: dto.provider_email,
+    providerUsername: dto.provider_username ?? null,
+    providerName: dto.provider_name ?? null,
   };
 }
 
