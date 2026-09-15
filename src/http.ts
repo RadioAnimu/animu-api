@@ -195,10 +195,15 @@ export class HttpClient {
       if (error instanceof AnimuApiError) throw error;
       // Duck-typed on purpose: React Native (Hermes) has no `DOMException`
       // global, so `instanceof DOMException` would itself throw there.
+      // `controller.signal.aborted` is the reliable check: `expo/fetch` wraps
+      // aborts in a `FetchError` whose `name` is plain "Error", so relying on
+      // `name === "AbortError"` alone would mislabel our own timeouts as
+      // "fetch failed: Fetch request has been canceled".
       const isAbort =
-        !!error &&
-        typeof error === "object" &&
-        (error as { name?: unknown }).name === "AbortError";
+        controller.signal.aborted ||
+        (!!error &&
+          typeof error === "object" &&
+          (error as { name?: unknown }).name === "AbortError");
       const message = isAbort
         ? `Request timed out after ${options?.timeout ?? this.defaultTimeout}ms`
         : error instanceof Error
