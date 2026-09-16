@@ -218,8 +218,10 @@ describe("AnimuLive", () => {
       onSongChange: (song) => titles.push(song.track?.title ?? ""),
     });
 
-    await waitFor(() => expect(titles).toEqual(["Kimi wa Dekinai Ko", "crossing field"]));
-    expect(calls).toBeGreaterThanOrEqual(3);
+    await waitFor(() => {
+      expect(titles).toEqual(["Kimi wa Dekinai Ko", "crossing field"]);
+      expect(calls).toBeGreaterThanOrEqual(3);
+    });
     sub.close();
   });
 
