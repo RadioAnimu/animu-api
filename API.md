@@ -272,6 +272,74 @@ definitions exported from the package.
 
 ---
 
+## Realtime Stream (SSE) — `live`
+
+`GET https://api.animu.moe/tungtungtung/`
+
+| | |
+| --- | --- |
+| **Auth** | none |
+| **Response** | `text/event-stream` |
+| **Events** | `song_change` (`LiveSongChangeDTOSchema`), `listeners` (`LiveListenersDTOSchema`) |
+| **Client** | `AnimuLive` (`animu.live`), `SSEDecoder` |
+| **Errors** | `AnimuApiError` (streamed via `onError`; reconnects automatically) |
+
+Long-lived Server-Sent Events stream served by the Go
+[`rewrite-animu-api`](https://github.com/RadioAnimu/rewrite-animu-api) SSE
+daemon. It pushes a `song_change` immediately on connect (the station's
+current state) and again whenever the on-air track changes, plus a
+`listeners` event whenever the count changes independently. While the station
+is down, `status` is `"offline"` and the payload carries a placeholder track.
+
+**`song_change` payload** — same shape as section 1, plus station identity:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `server_name` | `string` | Station display name |
+| `status` | `string` | `"autodj"`, `"live"`, or `"offline"` (station down) |
+| `offline_since` | `string?` | RFC3339 outage start; only while offline → `LiveNowPlaying.offlineSince` |
+| `message` | `string?` | Station status banner; only while offline → `LiveNowPlaying.message` |
+| `rawtitle` | `string` | Server-side title, `Artist - Title \| Anime` |
+| `track.*` | | As in section 1, plus `track.album`; `duration` may be the daemon's `"notime"` sentinel → degrades to `0` |
+| `listeners` | `number` | Current listener count |
+
+**`listeners` payload**
+
+| Field | Type |
+| --- | --- |
+| `listeners` | `number` (coerced) |
+
+```ts
+const stop = animu.live.subscribe({
+  onOpen: () => {},
+  onSongChange: ({ track, listeners, status, album }) => {},
+  onListeners: (listeners, receivedAt) => {},
+  onError: (error) => {},   // transport / HTTP / validation
+  onClose: () => {},        // subscription closed
+});
+stop.close();
+
+// Or async-iterate:
+for await (const event of animu.live.events()) {
+  if (event.type === "song_change") console.log(event.song.track?.title);
+}
+```
+
+> **Business rules**
+> - Events originate from the status file polled at **1 Hz**: a payload arrives at most ~1 s after the underlying change; `listeners` only fires when the count actually changes.
+> - The **first event on connect is always a `song_change`** (the daemon seeds new clients), so subscribers never need an initial one-shot fetch.
+> - `status` semantics — `"autodj"`: AutoDJ playing (station-side DJ-name match); `"live"`: a human DJ; `"offline"`: station down after 5 consecutive failed upstream polls.
+> - While offline the payload is a **placeholder track** (`artist: "Rádio Animu"`, `title: "Offline — Voltamos já!"`, `album: "Animu Offline"`, no-cover artwork, `duration`/`timestart` 0, `listeners` 0, `rawtitle: "Rádio Animu - Offline | Voltamos já!"`) plus `offline_since` (RFC3339) and `message`.
+> - Live DJ blocks marked `[NO AR]` have no resolvable length: the daemon sends `"notime"`, which this client **degrades to `duration: 0`** (so elapsed-progress helpers report `null`).
+> - One shared connection fans out to every subscriber; it opens with the first subscriber and closes with the last. Late subscribers immediately receive the last known song/listener state.
+> - Delivery is best-effort, not queued: the server may skip a slow client (`song_change` remains authoritative — the next event reflects the current state) and the stream sends **no keep-alive comments**, so middleboxes may cut idle connections — covered by automatic reconnect with capped exponential backoff + jitter (`reconnect`, `minReconnectDelay`, `maxReconnectDelay`, `reconnectJitter`). HTTP 4xx other than `408`/`429` is treated as permanent and does not retry.
+> - Every `song_change` also carries the current `listeners`; `onListeners` additionally fires with it only when the value actually changed (deduped against the previous event).
+> - The track is mapped exactly like section 1 (`trackFromMetadata`), so `track` is `null`-safe, artwork quality and `isRequest` behave identically.
+> - The stream is long-lived and deliberately has no request timeout. Use a streaming-capable fetch — browsers, Node ≥ 18, Deno, Bun natively; `expo/fetch` in React Native.
+> - `SSEDecoder` is exported standalone for custom transports; `message` events (no `event:` field) are treated as `song_change`.
+
+---
+
 ## Transport behavior (all endpoints)
 
 | Feature | Value |

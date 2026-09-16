@@ -29,6 +29,40 @@ const streams = await animu.getStreams();
 const page = await animu.searchMusicByTitle("attack");
 ```
 
+## Realtime (SSE)
+
+`animu.live` consumes the station's realtime [Server-Sent Events][sse] stream
+(`https://api.animu.moe/tungtungtung/`) — no polling. The first subscriber
+opens one shared connection; drops reconnect automatically with capped
+exponential backoff.
+
+```ts
+const stop = animu.live.subscribe({
+  onSongChange: ({ track, listeners, status, album }) =>
+    console.log(track?.title, listeners.value, status),
+  onListeners: (listeners) => console.log("listeners:", listeners.value),
+  onError: (error) => console.warn(error),
+});
+
+stop.close();
+```
+
+Async iteration works too:
+
+```ts
+for await (const event of animu.live.events()) {
+  if (event.type === "song_change") console.log(event.song.track?.title);
+}
+```
+
+Late subscribers immediately receive the last known song and listener count.
+The stream is long-lived, so it applies no request timeout — it needs a
+streaming-capable `fetch` (browsers, Node ≥ 18, Deno, Bun natively;
+`expo/fetch` in React Native) and works with any custom `fetchImpl` — the
+client decodes UTF-8 internally, no `TextDecoder` global required.
+
+[sse]: https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events
+
 ## Auth (v5)
 
 Multi-provider OAuth (Discord, Google, Apple), Animu Connect
@@ -95,6 +129,7 @@ new AnimuApi({
   defaultCover,     // Animu's default cover
   fallbackStreams,  // Animu's public relays
   authBaseUrl,      // Animu Auth (v5) deploy base for `api.auth`
+  liveUrl,          // realtime SSE endpoint for `api.live`
 });
 ```
 
@@ -121,6 +156,8 @@ new AnimuApi({
 | `validateSession(sessionId)` | Legacy PHP session check |
 | `logout(sessionId)` | Legacy server-side logout (best-effort) |
 | `exchangeToken(params)` | Legacy Discord OAuth2 code → `User` |
+| `live.subscribe(handlers)` | Realtime SSE stream (`song_change` + `listeners`) |
+| `live.events(signal?)` | Realtime events as an async iterator |
 | `auth.*` | Auth API v5 — see below |
 
 ### Auth API v5 (`AnimuAuth`)

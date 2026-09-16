@@ -4,6 +4,12 @@ export const ENDPOINTS = {
   web: "https://www.animu.moe/",
   /** Now-playing metadata API (current track + listener count). */
   api: "https://api.animu.moe/",
+  /**
+   * Realtime Server-Sent Events stream (`song_change` + `listeners`),
+   * backed by the Go `rewrite-animu-api` SSE daemon. Long-lived — use
+   * {@link AnimuLive}, never the one-shot {@link HttpClient}.
+   */
+  live: "https://api.animu.moe/tungtungtung/",
   /** Current program / DJ page endpoint. */
   program: "https://www.animu.moe/teste/locutor.php",
   /** Latest listener requests (positional-array JSON). */

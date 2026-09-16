@@ -12,6 +12,7 @@ export const TrackDTOSchema = z.object({
     .object({
       artist: z.string().optional(),
       title: z.string().optional(),
+      album: z.string().optional(),
       duration: z.coerce.number(),
       timestart: z.coerce.number(),
       artworks: z
@@ -45,6 +46,31 @@ export const ListenersDTOSchema = z.object({
 export const StreamMetadataDTOSchema = z.object({
   ...TrackDTOSchema.shape,
   ...ListenersDTOSchema.shape,
+});
+
+/**
+ * `song_change` event from the realtime SSE stream. Same shape as
+ * {@link StreamMetadataDTOSchema} plus the station's `server_name` and
+ * `status` (`"autodj"`, `"live"` or `"offline"`).
+ *
+ * The Go daemon also reports `offline_since` / `message` while offline, and
+ * its duration can be the literal string `"notime"` (no length was resolved)
+ * — that case degrades to `0` instead of failing the whole event.
+ */
+export const LiveSongChangeDTOSchema = StreamMetadataDTOSchema.extend({
+  track: TrackDTOSchema.shape.track
+    .unwrap()
+    .extend({ duration: z.coerce.number().catch(0) })
+    .optional(),
+  server_name: z.string().optional(),
+  status: z.string().optional(),
+  offline_since: z.string().optional(),
+  message: z.string().optional(),
+});
+
+/** `listeners` event from the realtime SSE stream. */
+export const LiveListenersDTOSchema = z.object({
+  listeners: z.coerce.number(),
 });
 
 /** PHP page endpoint — every field degrades to "" instead of failing. */
@@ -121,6 +147,8 @@ export const UserDTOSchema = z.object({
 export type TrackDTO = z.infer<typeof TrackDTOSchema>;
 export type ListenersDTO = z.infer<typeof ListenersDTOSchema>;
 export type StreamMetadataDTO = z.infer<typeof StreamMetadataDTOSchema>;
+export type LiveSongChangeDTO = z.infer<typeof LiveSongChangeDTOSchema>;
+export type LiveListenersDTO = z.infer<typeof LiveListenersDTOSchema>;
 export type ProgramDTO = z.infer<typeof ProgramDTOSchema>;
 export type TrackHistoryItemDTO = z.infer<typeof TrackHistoryItemSchema>;
 export type TrackHistoryDTO = z.infer<typeof TrackHistorySchema>;

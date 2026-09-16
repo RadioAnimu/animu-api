@@ -1,5 +1,6 @@
 export { AnimuApi } from "./animu-api.js";
 export { AnimuAuth } from "./auth.js";
+export { AnimuLive, SSEDecoder, type SSEMessage } from "./live.js";
 export {
   AnimuApiError,
   ValidationError,
@@ -28,6 +29,8 @@ export {
   historyFromDTO,
   isRealTrack,
   listenersFromMetadata,
+  liveListenersFromDTO,
+  liveNowPlayingFromDTO,
   musicRequestFromDTO,
   paginationFromDTO,
   parseNowPlayingTitle,

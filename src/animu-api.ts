@@ -2,7 +2,9 @@ import { DEFAULT_COVER, DEFAULT_USER_AGENT, ENDPOINTS, FALLBACK_STREAMS } from "
 import { AnimuApiError, ValidationError, type RequestResult } from "./errors.js";
 import { HttpClient, toFormData } from "./http.js";
 import { AnimuAuth } from "./auth.js";
+import { AnimuLive } from "./live.js";
 import type { AnimuAuthOptions } from "./auth-types.js";
+import type { LiveOptions } from "./types.js";
 import {
   historyFromDTO,
   listenersFromMetadata,
@@ -63,9 +65,11 @@ export class AnimuApi {
   private readonly defaultCover: string;
   private readonly fallbackStreams: Stream[];
   private readonly authOptions: AnimuAuthOptions;
+  private readonly liveOptions: LiveOptions;
 
   private cachedStreams: Stream[] | null = null;
   private authClient: AnimuAuth | null = null;
+  private liveClient: AnimuLive | null = null;
 
   /** @param options - All fields optional; sensible Animu defaults are built in. */
   constructor(options: AnimuApiOptions = {}) {
@@ -83,6 +87,13 @@ export class AnimuApi {
       fetchImpl: options.fetchImpl,
       baseUrl: options.authBaseUrl,
     };
+    this.liveOptions = {
+      userAgent: options.userAgent ?? DEFAULT_USER_AGENT,
+      fetchImpl: options.fetchImpl,
+      url: options.liveUrl,
+      artworkQuality: options.artworkQuality ?? "medium",
+      defaultCover: options.defaultCover ?? DEFAULT_COVER,
+    };
   }
 
   /**
@@ -93,6 +104,27 @@ export class AnimuApi {
   get auth(): AnimuAuth {
     if (!this.authClient) this.authClient = new AnimuAuth(this.authOptions);
     return this.authClient;
+  }
+
+  /**
+   * Realtime Server-Sent Events client for the now-playing stream
+   * (`song_change` + `listeners`). Shares this instance's user agent, fetch
+   * implementation, artwork quality and default cover.
+   *
+   * Prefer this over polling {@link getStreamMetadata} when you need live
+   * updates: one long-lived connection pushes changes the moment they happen.
+   * Use `liveUrl` to point at a non-production deploy.
+   *
+   * @example
+   * ```ts
+   * const stop = animu.live.subscribe({
+   *   onSongChange: ({ track, listeners }) => console.log(track?.title),
+   * });
+   * ```
+   */
+  get live(): AnimuLive {
+    if (!this.liveClient) this.liveClient = new AnimuLive(this.liveOptions);
+    return this.liveClient;
   }
 
   // ─── Now playing ────────────────────────────────────────────────────────

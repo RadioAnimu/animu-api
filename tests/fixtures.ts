@@ -34,6 +34,53 @@ export const metadataPayloadWithoutTrack = {
   listeners: 3,
 };
 
+export const liveSongChangePayload = {
+  server_name: "Animu FM Radio Station - The Most Moe Radio of Brazil!",
+  status: "autodj",
+  rawtitle: "Kikuo feat. Hatsune Miku - Kimi wa Dekinai Ko",
+  listeners: 22,
+  track: {
+    artist: "Kikuo feat. Hatsune Miku",
+    title: "Kimi wa Dekinai Ko",
+    album: "きくおミク3",
+    artworks: {
+      tiny: "https://www.animu.moe/media/tracks/trackImage9502.jpg",
+      medium: "https://www.animu.moe/media/tracks/trackImage9502_medium.jpg",
+      large: "https://www.animu.moe/media/tracks/trackImage9502_large.jpg",
+    },
+    timestart: 1789583335000,
+    duration: 262600,
+    playlist: { track_id: 9502, title: "Animu Toca" },
+  },
+};
+
+export const liveListenersPayload = { listeners: 25 };
+
+/** Mirrors the Go daemon's `buildOfflinePayload` (station down). */
+export const liveSongChangeOfflinePayload = {
+  server_name: "Animu FM Radio Station - The Most Moe Radio of Brazil!",
+  status: "offline",
+  offline_since: "2026-09-16T18:00:00Z",
+  message: "Servidor temporariamente offline — voltamos em breve!",
+  rawtitle: "Rádio Animu - Offline | Voltamos já!",
+  listeners: 0,
+  track: {
+    artist: "Rádio Animu",
+    title: "Offline — Voltamos já!",
+    album: "Animu Offline",
+    artworks: { tiny: "https://www.animu.moe/nocover.png", medium: "https://www.animu.moe/nocover.png", large: "https://www.animu.moe/nocover.png" },
+    timestart: 0,
+    duration: 0,
+  },
+};
+
+/** The daemon reports `"notime"` when no track length was resolved. */
+export const liveSongChangeNoTimePayload = {
+  ...liveSongChangePayload,
+  rawtitle: "DJ Haruka - Live Set [NO AR]",
+  track: { ...liveSongChangePayload.track, duration: "notime", album: "" },
+};
+
 export const programPayload = {
   locutor: "Dolode",
   programa: "Natsukashii",

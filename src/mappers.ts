@@ -5,6 +5,8 @@ import {
   StreamMetadataDTOSchema,
   TrackHistorySchema,
   UserDTOSchema,
+  type LiveListenersDTO,
+  type LiveSongChangeDTO,
   type MusicRequestDTO,
   type ProgramDTO,
   type StreamMetadataDTO,
@@ -18,6 +20,7 @@ import type {
   ArtworkQuality,
   Artworks,
   HistoryType,
+  LiveNowPlaying,
   LiveRequest,
   Listeners,
   MusicRequest,
@@ -195,6 +198,44 @@ export function listenersFromMetadata(
     if (Number.isFinite(value) && value >= 0) return { value };
   }
   return { value: 0 };
+}
+
+/**
+ * Maps a validated `song_change` SSE event to a {@link LiveNowPlaying}.
+ *
+ * Reuses {@link trackFromMetadata} (same track shape as now-playing) and
+ * {@link listenersFromMetadata}, then attaches the station name, broadcast
+ * status, raw title, album and arrival time.
+ *
+ * @param dto - Validated `song_change` DTO.
+ * @param artworkQuality - Quality preference for the resolved cover.
+ * @param defaultCover - Cover used when the track has none.
+ */
+export function liveNowPlayingFromDTO(
+  dto: LiveSongChangeDTO,
+  artworkQuality: ArtworkQuality,
+  defaultCover: string,
+): LiveNowPlaying {
+  return {
+    track: trackFromMetadata(dto, artworkQuality, defaultCover),
+    listeners: listenersFromMetadata(dto as unknown as Record<string, unknown>),
+    serverName: dto.server_name ?? "",
+    status: dto.status ?? "",
+    rawTitle: dto.rawtitle ?? "",
+    album: dto.track?.album ?? "",
+    offlineSince: dto.offline_since ?? null,
+    message: dto.message ?? null,
+    receivedAt: new Date(),
+  };
+}
+
+/**
+ * Maps a validated `listeners` SSE event to a {@link Listeners}.
+ *
+ * @param dto - Validated `listeners` DTO.
+ */
+export function liveListenersFromDTO(dto: LiveListenersDTO): Listeners {
+  return { value: dto.listeners };
 }
 
 /**

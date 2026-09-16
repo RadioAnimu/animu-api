@@ -59,6 +59,95 @@ export interface StreamMetadata {
   listeners: Listeners;
 }
 
+/**
+ * A `song_change` push from the realtime SSE stream: the same data as
+ * {@link StreamMetadata} plus station identity and arrival time.
+ */
+export interface LiveNowPlaying {
+  /** `null` when the event carried no track object. */
+  track: Track | null;
+  listeners: Listeners;
+  /** Station display name (e.g. `"Animu FM Radio Station - ..."`). */
+  serverName: string;
+  /** Broadcast mode as reported by the station: `"autodj"`, `"live"` or
+   * `"offline"` (station down — see `offlineSince`/`message`). */
+  status: string;
+  /** Untouched `rawtitle` exactly as reported. */
+  rawTitle: string;
+  /** Album of the on-air track, `""` when unknown. */
+  album: string;
+  /** RFC3339 timestamp of when the outage began; only present while `status` is `"offline"`. */
+  offlineSince: string | null;
+  /** Station status banner (e.g. the offline "voltamos já!" text); `null` otherwise. */
+  message: string | null;
+  /** When this client received the event. */
+  receivedAt: Date;
+}
+
+/**
+ * A single realtime event, as yielded by {@link AnimuLive.events}. Discriminated
+ * by `type`.
+ */
+export type LiveEvent =
+  | { type: "song_change"; song: LiveNowPlaying }
+  | { type: "listeners"; listeners: Listeners; receivedAt: Date }
+  | { type: "open" }
+  | { type: "error"; error: Error }
+  | { type: "close" };
+
+/**
+ * Callbacks for a realtime subscription. Every handler is optional — only
+ * the events you care about need one.
+ */
+export interface LiveHandlers {
+  /** A new track started (also carries the current listener count). */
+  onSongChange?: (song: LiveNowPlaying) => void;
+  /** The listener count changed (deduped: only when the value differs from
+   * the previous event — `song_change` piggybacks its count too). */
+  onListeners?: (listeners: Listeners, receivedAt: Date) => void;
+  /** The stream connected (or reconnected) successfully. */
+  onOpen?: () => void;
+  /** A transport, HTTP or payload-validation error. Reconnects automatically. */
+  onError?: (error: Error) => void;
+  /** The subscription was closed (explicit `close()` or the client shut down). */
+  onClose?: () => void;
+}
+
+/** Handle returned by {@link AnimuLive.subscribe}; call `close()` to unsubscribe. */
+export interface LiveSubscription {
+  /** Unsubscribes and closes the underlying connection once the last subscriber leaves. */
+  close(): void;
+  /** Whether this subscription has been closed. */
+  readonly closed: boolean;
+}
+
+/** Constructor options for {@link AnimuLive}. All fields are optional. */
+export interface LiveOptions {
+  /** SSE endpoint. Defaults to {@link ENDPOINTS.live}. */
+  url?: string;
+  /** Sent as the `User-Agent` header. Default: `"animu-api"`. */
+  userAgent?: string;
+  /** Any fetch-compatible implementation; must return a streaming response
+   * body (`expo/fetch` in React Native — the global RN fetch does not stream).
+   * Custom impls need no other globals: the stream does its own incremental
+   * UTF-8 decoding internally (no `TextDecoder`). */
+  fetchImpl?: FetchLike;
+  /** Extra headers merged into every connect/reconnect request. */
+  headers?: Record<string, string>;
+  /** Artwork quality used when mapping the on-air track (default: `"medium"`). */
+  artworkQuality?: ArtworkQuality;
+  /** Cover used when the on-air track has none (default: Animu's cover). */
+  defaultCover?: string;
+  /** Reconnect automatically after a drop. Default: `true`. */
+  reconnect?: boolean;
+  /** First reconnect delay in ms; doubles per attempt. Default: `1000`. */
+  minReconnectDelay?: number;
+  /** Cap for the reconnect delay in ms. Default: `30000`. */
+  maxReconnectDelay?: number;
+  /** Random jitter fraction applied to each delay (0–1). Default: `0.2`. */
+  reconnectJitter?: number;
+}
+
 /** An audio stream (relay) the radio publishes. */
 export interface Stream {
   id: string;
@@ -166,4 +255,9 @@ export interface AnimuApiOptions {
    * used by the {@link AnimuApi.auth} client. Defaults to the production deploy.
    */
   authBaseUrl?: string;
+  /**
+   * SSE endpoint for the realtime now-playing stream, used by the
+   * {@link AnimuApi.live} client. Defaults to {@link ENDPOINTS.live}.
+   */
+  liveUrl?: string;
 }
