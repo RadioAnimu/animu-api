@@ -106,6 +106,39 @@ export function parseRequestTitle(title: string): {
 }
 
 /**
+ * Derives the sibling-size URLs of a cover from the station's CDN naming
+ * scheme — `/media/tracks/trackImage<id>[_tiny|_medium|_large].<ext>` — so
+ * a cover seen in one journey (search results, history rows) can seed the
+ * dtSize another journey needs (now-playing at the user's quality, media
+ * session artwork) without a new download.
+ *
+ * URLs that don't match the scheme (other hosts, plain `cover.jpg`,
+ * suffixless base images) can't be safely rewritten — returns `null`.
+ *
+ * @param url - Any artwork URL, any size.
+ */
+export function deriveArtworkVariants(url: string): Artworks | null {
+  const match =
+    /^(.+\/trackImage\d+)(?:_(tiny|medium|large))?(\.[a-z0-9]+)(?:\?.*)?$/i.exec(
+      url,
+    );
+  if (!match) return null;
+  const [, base, , ext] = match;
+  return {
+    tiny: `${base}_tiny${ext}`,
+    medium: `${base}_medium${ext}`,
+    large: `${base}_large${ext}`,
+  };
+}
+
+/** Size rank for cached-variant reuse: `large`/`unknown` seed everything. */
+export function artworkSizeRank(url: string): "tiny" | "medium" | "large" {
+  if (/_large\./.test(url)) return "large";
+  if (/_tiny\./.test(url)) return "tiny";
+  return "medium";
+}
+
+/**
  * Resolves a single artwork URL from the available sizes.
  *
  * Fallback chains: `high`: large→medium→tiny; `medium`: medium→tiny (never
@@ -405,27 +438,42 @@ function getHistoryStartTime(
 /**
  * Maps a validated search-result row to a {@link MusicRequest}.
  *
- * Artwork paths are relative — they are prefixed with the Animu web base
- * URL. A `timestrike` value marks the track as not requestable.
+ * The row carries every image size the station has (`image_large`,
+ * `image_medium`, `image_tiny`) as relative paths, prefixed with the
+ * Animu web base URL. The user's artwork quality — the SAME setting that
+ * selects the now-playing cover — decides which size search results
+ * carry, so a song searched at `medium` and played minutes later resolves
+ * to the same URL family (a disk-cache hit instead of a re-download).
  *
  * @param dto - Validated search row.
+ * @param quality - Artwork quality preference; `"high"` when omitted
+ *   (preserves the historical large-first behavior for callers that
+ *   don't know about the setting).
  * @param defaultCover - Cover used when no image size is present.
  */
 export function musicRequestFromDTO(
   dto: MusicRequestDTO,
+  quality: ArtworkQuality,
   defaultCover: string,
 ): MusicRequest {
   const { song, anime, artist } = parseRequestTitle(dto.title);
-  const image = dto.image_large || dto.image_medium || dto.image_tiny;
-  const artwork = image ? `${ENDPOINTS.web}${image}` : defaultCover;
-
+  const artworks: Artworks = {
+    tiny: dto.image_tiny ? `${ENDPOINTS.web}${dto.image_tiny}` : undefined,
+    medium: dto.image_medium ? `${ENDPOINTS.web}${dto.image_medium}` : undefined,
+    large: dto.image_large ? `${ENDPOINTS.web}${dto.image_large}` : undefined,
+  };
+  const hasAnyImage = Boolean(
+    dto.image_large || dto.image_medium || dto.image_tiny,
+  );
   return {
     id: dto.id.toString(),
     raw: dto.title,
     song,
     anime,
     artist: dto.author || artist,
-    artwork,
+    artwork: hasAnyImage
+      ? selectArtwork(artworks, quality, defaultCover)
+      : defaultCover,
     requestable: !dto.timestrike,
   };
 }
@@ -438,15 +486,19 @@ export function musicRequestFromDTO(
  * `ceil(total_count / limit)`.
  *
  * @param dto - Raw response; validated internally.
+ * @param quality - Artwork quality preference for the result rows.
  * @param defaultCover - Cover used for results without artwork.
  */
 export function paginationFromDTO(
   dto: unknown,
+  quality: ArtworkQuality,
   defaultCover: string,
 ): MusicRequestPagination {
   const parsed = MusicRequestResponseDTOSchema.parse(dto);
   return {
-    results: parsed.objects.map((o) => musicRequestFromDTO(o, defaultCover)),
+    results: parsed.objects.map((o) =>
+      musicRequestFromDTO(o, quality, defaultCover),
+    ),
     nextPageParams: parsed.meta.next
       ? parseQueryParams(parsed.meta.next)
       : undefined,

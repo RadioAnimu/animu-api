@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  artworkSizeRank,
+  deriveArtworkVariants,
   getTrackProgress,
   historyFromDTO,
   isRealTrack,
@@ -17,6 +19,7 @@ import {
   validateLiveRequest,
 } from "../src/mappers";
 import type { Track } from "../src/types";
+import type { MusicRequestDTO } from "../src/schemas";
 import {
   MusicRequestResponseDTOSchema,
   StreamMetadataDTOSchema,
@@ -114,6 +117,55 @@ describe("selectArtwork", () => {
     expect(selectArtwork(artworks, "off")).toBe(DEFAULT_COVER);
     expect(selectArtwork(undefined, "high")).toBe(DEFAULT_COVER);
     expect(selectArtwork({ tiny: "https://x.co/not-an-image" }, "low")).toBe(DEFAULT_COVER);
+  });
+});
+
+describe("deriveArtworkVariants / artworkSizeRank", () => {
+  it("derives all sibling sizes for a suffixed CDN URL", () => {
+    expect(
+      deriveArtworkVariants("https://www.animu.moe/media/tracks/trackImage16217_medium.jpg"),
+    ).toEqual({
+      tiny: "https://www.animu.moe/media/tracks/trackImage16217_tiny.jpg",
+      medium: "https://www.animu.moe/media/tracks/trackImage16217_medium.jpg",
+      large: "https://www.animu.moe/media/tracks/trackImage16217_large.jpg",
+    });
+  });
+
+  it("derives variants for a suffixless base image", () => {
+    expect(
+      deriveArtworkVariants("https://www.animu.moe/media/tracks/trackImage9502.jpg"),
+    ).toEqual({
+      tiny: "https://www.animu.moe/media/tracks/trackImage9502_tiny.jpg",
+      medium: "https://www.animu.moe/media/tracks/trackImage9502_medium.jpg",
+      large: "https://www.animu.moe/media/tracks/trackImage9502_large.jpg",
+    });
+  });
+
+  it("keeps query strings out of the rewritten paths", () => {
+    expect(
+      deriveArtworkVariants("https://x.co/media/tracks/trackImage1_tiny.webp?v=2"),
+    ).toEqual({
+      tiny: "https://x.co/media/tracks/trackImage1_tiny.webp",
+      medium: "https://x.co/media/tracks/trackImage1_medium.webp",
+      large: "https://x.co/media/tracks/trackImage1_large.webp",
+    });
+  });
+
+  it("returns null for URLs without the trackImage naming (cannot be rewritten)", () => {
+    expect(deriveArtworkVariants("https://www.animu.moe/media/tracks/cover.jpg")).toBeNull();
+  });
+
+  it("derives the same scheme on any host (naming is what matters)", () => {
+    expect(deriveArtworkVariants("https://cdn.other/12/trackImage1.png")).toMatchObject({
+      large: "https://cdn.other/12/trackImage1_large.png",
+    });
+  });
+
+  it("sizes rank tiny < medium < large", () => {
+    expect(artworkSizeRank("https://x.co/trackImage1_tiny.jpg")).toBe("tiny");
+    expect(artworkSizeRank("https://x.co/trackImage1_medium.jpg")).toBe("medium");
+    expect(artworkSizeRank("https://x.co/trackImage1_large.jpg")).toBe("large");
+    expect(artworkSizeRank("https://x.co/trackImage1.jpg")).toBe("medium");
   });
 });
 
@@ -248,7 +300,7 @@ describe("historyFromDTO", () => {
 describe("musicRequestFromDTO + paginationFromDTO", () => {
   it("maps title, artwork from the web base and requestability", () => {
     const dto = MusicRequestResponseDTOSchema.parse(searchResponsePayload);
-    const first = musicRequestFromDTO(dto.objects[0]!, DEFAULT_COVER);
+    const first = musicRequestFromDTO(dto.objects[0]!, "high", DEFAULT_COVER);
     expect(first).toEqual({
       id: "9126",
       raw: "Aegis of Love|Ijiranaide, Nagatoro-san 2nd Attack",
@@ -260,20 +312,59 @@ describe("musicRequestFromDTO + paginationFromDTO", () => {
     });
   });
 
+  it("search rows obey the artwork quality — the same setting as now-playing", () => {
+    const dto = MusicRequestResponseDTOSchema.parse(searchResponsePayload);
+    // Row 2 carries every size: image_large/image_medium/image_tiny pairs
+    // map to the CDN's size suffixes, so quality picks the same URL family
+    // now-playing would pick for that track.
+    const row: MusicRequestDTO = {
+      id: 1,
+      title: "Aegis of Love|Ijiranaide, Nagatoro-san 2nd Attack",
+      author: "Sunomiya",
+      image_large: "/media/tracks/trackImage9126_large.jpg",
+      image_medium: "/media/tracks/trackImage9126_medium.jpg",
+      image_tiny: "/media/tracks/trackImage9126_tiny.jpg",
+      timestrike: "",
+    };
+
+    expect(musicRequestFromDTO(row, "high", DEFAULT_COVER).artwork).toBe(
+      "https://www.animu.moe//media/tracks/trackImage9126_large.jpg",
+    );
+    expect(musicRequestFromDTO(row, "medium", DEFAULT_COVER).artwork).toBe(
+      "https://www.animu.moe//media/tracks/trackImage9126_medium.jpg",
+    );
+    expect(musicRequestFromDTO(row, "low", DEFAULT_COVER).artwork).toBe(
+      "https://www.animu.moe//media/tracks/trackImage9126_tiny.jpg",
+    );
+    // Quality off → no download anywhere, bundled/remote default instead
+    expect(musicRequestFromDTO(row, "off", DEFAULT_COVER).artwork).toBe(DEFAULT_COVER);
+  });
+
+  it("quality falls back down the chain when only one size exists", () => {
+    const dto = MusicRequestResponseDTOSchema.parse(searchResponsePayload);
+    // Row 1 (Silversun) only carries image_tiny
+    expect(musicRequestFromDTO(dto.objects[1]!, "high", DEFAULT_COVER).artwork).toBe(
+      "https://www.animu.moe//media/tracks/trackImage9200_tiny.jpg",
+    );
+
+    // A row with no image at all always gets the default cover
+    expect(musicRequestFromDTO({ id: 5, title: "X", author: "", timestrike: "" }, "high", DEFAULT_COVER).artwork).toBe(DEFAULT_COVER);
+  });
+
   it("uses author fallback and flags timestrike as not requestable", () => {
     const dto = MusicRequestResponseDTOSchema.parse(searchResponsePayload);
-    const second = musicRequestFromDTO(dto.objects[1]!, DEFAULT_COVER);
+    const second = musicRequestFromDTO(dto.objects[1]!, "high", DEFAULT_COVER);
     // No dash in the song part → the whole part becomes the artist (app parity)
     expect(second.artist).toBe("Silversun");
     expect(second.requestable).toBe(true);
 
-    const third = musicRequestFromDTO(dto.objects[2]!, DEFAULT_COVER);
+    const third = musicRequestFromDTO(dto.objects[2]!, "high", DEFAULT_COVER);
     expect(third.requestable).toBe(false);
     expect(third.artwork).toBe(DEFAULT_COVER);
   });
 
   it("builds pagination with parsed next-page params", () => {
-    const pagination = paginationFromDTO(searchResponsePayload, DEFAULT_COVER);
+    const pagination = paginationFromDTO(searchResponsePayload, "high", DEFAULT_COVER);
     expect(pagination.totalResults).toBe(34);
     expect(pagination.totalPages).toBe(2);
     expect(pagination.nextPageParams).toEqual({

@@ -209,7 +209,7 @@ export class AnimuApi {
     const dto = MusicRequestResponseDTOSchema.parse(
       await this.http.get<unknown>(ENDPOINTS.requestSearch, { params: params as unknown as Record<string, string | number | boolean> }),
     );
-    return paginationFromDTO(dto, this.defaultCover);
+    return paginationFromDTO(dto, this.artworkQuality, this.defaultCover);
   }
 
   /**

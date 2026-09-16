@@ -26,6 +26,8 @@ export {
 } from "./endpoints.js";
 export {
   getTrackProgress,
+  artworkSizeRank,
+  deriveArtworkVariants,
   historyFromDTO,
   isRealTrack,
   listenersFromMetadata,

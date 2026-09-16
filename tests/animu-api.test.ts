@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AnimuApi } from "../src/animu-api";
 import { AnimuApiError, ValidationError } from "../src/errors";
-import { FALLBACK_STREAMS } from "../src/endpoints";
+import { FALLBACK_STREAMS, DEFAULT_COVER } from "../src/endpoints";
 import {
   metadataPayload,
   metadataPayloadWithAlias,
@@ -143,6 +143,34 @@ describe("searchMusic", () => {
     expect(fetchMock.mock.calls[0]![0]).toContain("server=1");
     expect(fetchMock.mock.calls[0]![0]).toContain("requestable=true");
     expect(fetchMock.mock.calls[0]![0]).toContain("limit=25");
+  });
+
+  it("result rows follow the client's artwork quality setting", async () => {
+    mockFetch([
+      { match: () => true, reply: () => jsonResponse(searchResponsePayload) },
+    ]);
+
+    const medium = await new AnimuApi({ artworkQuality: "medium" }).searchMusic({
+      server: 1,
+      query: "attack",
+      limit: 25,
+      offset: 0,
+    });
+    // Row 1 only exposes image_tiny → the medium chain lands on tiny
+    expect(medium.results[1]?.artwork).toBe(
+      "https://www.animu.moe//media/tracks/trackImage9200_tiny.jpg",
+    );
+
+    const low = await new AnimuApi({ artworkQuality: "off" }).searchMusic({
+      server: 1,
+      query: "attack",
+      limit: 25,
+      offset: 0,
+    });
+    // Covers off → rows never carry a remote URL (saves data everywhere)
+    for (const result of low.results) {
+      expect(result.artwork).toBe(DEFAULT_COVER);
+    }
   });
 });
 
