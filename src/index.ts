@@ -1,5 +1,21 @@
 export { AnimuApi } from "./animu-api.js";
-export { AnimuAuth } from "./auth.js";
+export { AnimuAuth, type AnimuAuthFacadeOptions } from "./auth.js";
+export { SessionStore } from "./session-store.js";
+export {
+  AppleAdapter,
+  DiscordAdapter,
+  FluxerAdapter,
+  GoogleAdapter,
+  createFallbackProviderAdapter,
+  defaultProviderAdapters,
+  providerAdapters,
+  registerProviderAdapter,
+  resolveProviderAdapter,
+  unregisterProviderAdapter,
+  type AuthExchangeFields,
+  type AuthLinkFields,
+  type AuthProviderAdapter,
+} from "./adapters/index.js";
 export { AnimuLive, SSEDecoder, type SSEMessage } from "./live.js";
 export {
   AnimuApiError,
