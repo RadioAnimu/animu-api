@@ -31,6 +31,8 @@ export interface Track {
   isRequest: boolean;
   /** When the track started playing. History rows may approximate this. */
   startTime: Date;
+  /** Playlist the track was served from (e.g. `"Animu Toca"`); `""` when unknown. */
+  playlistName: string;
 }
 
 /** The program currently on air. */
@@ -146,6 +148,21 @@ export interface LiveOptions {
   maxReconnectDelay?: number;
   /** Random jitter fraction applied to each delay (0–1). Default: `0.2`. */
   reconnectJitter?: number;
+  /**
+   * Inbox (replay buffer) size: how many recent {@link LiveEvent}s the
+   * shared connection retains so late subscribers drain them in order
+   * before live events. Consecutive `listeners` updates coalesce to the
+   * newest value. `0` disables the buffer (late subscribers only receive
+   * the current state). Default: `128`.
+   */
+  inboxSize?: number;
+  /**
+   * Max events buffered per {@link AnimuLive.events} consumer while it
+   * reads slower than events arrive. Beyond that, the oldest events are
+   * dropped (back-to-back `listeners` updates already coalesce). Default:
+   * `120`.
+   */
+  maxPending?: number;
 }
 
 /** An audio stream (relay) the radio publishes. */

@@ -133,6 +133,10 @@ new AnimuApi({
 });
 ```
 
+`AnimuLive` accepts extra options (`live.subscribe` / `new AnimuLive(...)`) —
+notably `inboxSize` (replay buffer for late subscribers, default 128) and
+`maxPending` (per-`events()` backlog bound, default 120).
+
 ## Errors
 
 - `AnimuApiError` — network and HTTP failures. Inspect `.statusCode`, `.url`, `.method`, `.code`.

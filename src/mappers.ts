@@ -196,17 +196,28 @@ export function trackFromMetadata(
   const { title, artist, anime } = parseNowPlayingTitle(raw);
   const artwork = selectArtwork(dto.track.artworks, artworkQuality, defaultCover);
 
+  // Prefer the server-resolved artist/title when present — but a title
+  // that still embeds the "| Anime" suffix is the daemon's raw
+  // titleBreaker output, in which case the rawtitle parse splits better.
+  const resolvedTitle = dto.track.title?.trim();
+  const serverTitle =
+    resolvedTitle && !resolvedTitle.includes(" | ") ? resolvedTitle : null;
+
   return {
     id: dto.track.playlist?.track_id?.toString() ?? "0",
     raw,
-    title,
-    artist: artist || dto.track.artist || "",
+    // The server (the Go daemon / API) resolves artist/title from its own
+    // sources; the rawtitle parse is only a fallback for payloads that
+    // omit them.
+    title: serverTitle || title.trim(),
+    artist: dto.track.artist?.trim() || artist.trim(),
     anime,
     artworks: dto.track.artworks ?? {},
     artwork,
     duration: dto.track.duration,
     startTime: new Date(dto.track.timestart || Date.now()),
     isRequest: raw.toLowerCase().includes("pedido"),
+    playlistName: dto.track.playlist?.title ?? "",
   };
 }
 
@@ -339,6 +350,7 @@ export function historyFromDTO(
       duration: 0,
       isRequest: true,
       startTime: getHistoryStartTime(type, isRequests ? item[1] : ""),
+      playlistName: "",
     };
     // One filler rule for every panel (jingles/idents/transitions)
     if (!isRealTrack(track)) continue;

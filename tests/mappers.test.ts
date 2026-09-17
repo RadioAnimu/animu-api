@@ -27,6 +27,7 @@ import {
 import { DEFAULT_COVER } from "../src/endpoints";
 import {
   metadataPayload,
+  metadataPayloadWithAlias,
   playedHistoryPayload,
   programPayload,
   programPayloadAutoDJ,
@@ -194,12 +195,54 @@ describe("trackFromMetadata", () => {
     expect(trackFromMetadata(dto, "medium", DEFAULT_COVER)?.isRequest).toBe(true);
   });
 
-  it("uses artist from the rawtitle parse over the track field", () => {
+  it("prefers the server-resolved track artist/title over the rawtitle parse", () => {
     const dto = StreamMetadataDTOSchema.parse({
       ...metadataPayload,
       rawtitle: "Raw Artist - Raw Title | Raw Anime",
     });
-    expect(trackFromMetadata(dto, "medium", DEFAULT_COVER)?.artist).toBe("Raw Artist");
+    const track = trackFromMetadata(dto, "medium", DEFAULT_COVER);
+    expect(track?.artist).toBe("Runa Mizutani");
+    expect(track?.title).toBe("Philosophyz");
+  });
+
+  it("falls back to the rawtitle parse when the track omits artist/title", () => {
+    const dto = StreamMetadataDTOSchema.parse(metadataPayloadWithAlias);
+    const track = trackFromMetadata(dto, "medium", DEFAULT_COVER);
+    expect(track?.artist).toBe("Yuki Kajiura");
+    expect(track?.title).toBe("track of twilight");
+  });
+
+  it("splits the anime out of a server title that still embeds it", () => {
+    // The Go daemon's titleBreaker only splits on " - ", so its track.title
+    // keeps the "| Anime" suffix — the rawtitle parse must win in that case.
+    const dto = StreamMetadataDTOSchema.parse({
+      ...metadataPayload,
+      rawtitle: "Toguro Otouto - Cry Lonely Cry | Yu Yu Hakusho",
+      track: {
+        ...metadataPayload.track,
+        artist: "Toguro Otouto",
+        title: "Cry Lonely Cry | Yu Yu Hakusho",
+      },
+    });
+    const track = trackFromMetadata(dto, "medium", DEFAULT_COVER);
+    expect(track?.title).toBe("Cry Lonely Cry");
+    expect(track?.anime).toBe("Yu Yu Hakusho");
+    expect(track?.artist).toBe("Toguro Otouto");
+  });
+
+  it("exposes the playlist name", () => {
+    const dto = StreamMetadataDTOSchema.parse({
+      ...metadataPayload,
+      track: { ...metadataPayload.track, playlist: { track_id: 1, title: "Animu Toca" } },
+    });
+    expect(trackFromMetadata(dto, "medium", DEFAULT_COVER)?.playlistName).toBe(
+      "Animu Toca",
+    );
+    expect(trackFromMetadata(
+      StreamMetadataDTOSchema.parse(metadataPayload),
+      "medium",
+      DEFAULT_COVER,
+    )?.playlistName).toBe("");
   });
 
   it("returns null when the payload has no track object", () => {
@@ -492,6 +535,7 @@ describe("isRealTrack", () => {
     duration: 60_000,
     isRequest: false,
     startTime: new Date(),
+    playlistName: "",
     ...overrides,
   });
 
@@ -537,6 +581,7 @@ describe("getTrackProgress", () => {
     duration: 60_000,
     isRequest: false,
     startTime: new Date(NOW - 5_000),
+    playlistName: "",
     ...overrides,
   });
 

@@ -25,6 +25,7 @@ export const TrackDTOSchema = z.object({
       playlist: z
         .object({
           track_id: z.coerce.number(),
+          title: z.string().optional(),
         })
         .optional(),
     })

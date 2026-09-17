@@ -307,6 +307,8 @@ export class AnimuLive {
   private readonly minReconnectDelay: number;
   private readonly maxReconnectDelay: number;
   private readonly reconnectJitter: number;
+  private readonly inboxSize: number;
+  private readonly maxPending: number;
 
   private readonly subscribers = new Set<Subscriber>();
   private nextSubscriberId = 1;
@@ -319,6 +321,13 @@ export class AnimuLive {
   private currentSong: LiveNowPlaying | null = null;
   private currentListeners: { listeners: Listeners; at: Date } | null = null;
 
+  /**
+   * Shared inbox: recent `song_change`/`listeners` events, to be drained in
+   * order by late subscribers. Consecutive trailing `listeners` updates
+   * coalesce to a single event (they only carry the current count).
+   */
+  private readonly inbox: LiveEvent[] = [];
+
   constructor(options: LiveOptions = {}) {
     this.url = options.url ?? ENDPOINTS.live;
     this.userAgent = options.userAgent ?? DEFAULT_USER_AGENT;
@@ -330,6 +339,8 @@ export class AnimuLive {
     this.minReconnectDelay = options.minReconnectDelay ?? 1000;
     this.maxReconnectDelay = options.maxReconnectDelay ?? 30000;
     this.reconnectJitter = options.reconnectJitter ?? 0.2;
+    this.inboxSize = options.inboxSize ?? 128;
+    this.maxPending = options.maxPending ?? 120;
   }
 
   /** Whether a connection is currently open. */
@@ -363,24 +374,33 @@ export class AnimuLive {
     this.subscribers.add(subscriber);
     if (!this.running) this.start();
 
-    // Replay the last known state so late subscribers render instantly.
-    const cachedSong = this.currentSong;
-    if (cachedSong) {
-      queueMicrotask(() => {
-        if (this.subscribers.has(subscriber)) {
-          this.safe(() => subscriber.onSongChange?.(cachedSong));
-        }
-      });
+    // Drain the inbox in order, so a late subscriber catches up on the
+    // buffered events before live events reach it.
+    if (this.inbox.length > 0) {
+      for (const event of [...this.inbox]) {
+        if (subscriber.closed) break;
+        this.deliver(subscriber, event);
+      }
     }
-    const cachedListeners = this.currentListeners;
+
+    // Fallback for late subscribers on an inbox-disabled client (`inboxSize: 0`).
+    const cachedSong = this.inbox.some(
+      (event) => event.type === "song_change",
+    )
+      ? null
+      : this.currentSong;
+    if (cachedSong) {
+      this.safe(() => subscriber.onSongChange?.(cachedSong));
+    }
+    const cachedListeners = this.inbox.some((event) =>
+      event.type === "listeners" || event.type === "song_change",
+    )
+      ? null
+      : this.currentListeners;
     if (cachedListeners) {
-      queueMicrotask(() => {
-        if (this.subscribers.has(subscriber)) {
-          this.safe(() =>
-            subscriber.onListeners?.(cachedListeners.listeners, cachedListeners.at),
-          );
-        }
-      });
+      this.safe(() =>
+        subscriber.onListeners?.(cachedListeners.listeners, cachedListeners.at),
+      );
     }
 
     return {
@@ -408,7 +428,18 @@ export class AnimuLive {
     let finished = false;
 
     const enqueue = (event: LiveEvent): void => {
-      queue.push(event);
+      // Coalesce consecutive listener-count updates: a slow consumer cares
+      // about the newest value, not every intermediate one.
+      if (
+        event.type === "listeners" &&
+        queue[queue.length - 1]?.type === "listeners"
+      ) {
+        queue[queue.length - 1] = event;
+      } else {
+        queue.push(event);
+      }
+      // Bound the pending backlog: drop the oldest events past the cap.
+      while (queue.length > this.maxPending) queue.shift();
       const resolve = resolveNext;
       resolveNext = null;
       resolve?.();
@@ -567,6 +598,7 @@ export class AnimuLive {
         this.defaultCover,
       );
       this.currentSong = song;
+      this.bufferEvent({ type: "song_change", song });
 
       const previous = this.currentListeners?.listeners.value;
       this.currentListeners = { listeners: song.listeners, at: song.receivedAt };
@@ -590,10 +622,39 @@ export class AnimuLive {
       const listeners = liveListenersFromDTO(dto);
       const at = new Date();
       this.currentListeners = { listeners, at };
+      this.bufferEvent({ type: "listeners", listeners, receivedAt: at });
       for (const subscriber of this.subscribers) {
         this.safe(() => subscriber.onListeners?.(listeners, at));
       }
     }
+  }
+
+  /** Routes a buffered event to one subscriber's handlers (by type). */
+  private deliver(subscriber: Subscriber, event: LiveEvent): void {
+    if (event.type === "song_change") {
+      this.safe(() => subscriber.onSongChange?.(event.song));
+    } else if (event.type === "listeners") {
+      this.safe(() =>
+        subscriber.onListeners?.(event.listeners, event.receivedAt),
+      );
+    }
+  }
+
+  /**
+   * Appends an event to the shared inbox: coalesces consecutive trailing
+   * `listeners` updates, then drops the oldest events beyond the cap.
+   */
+  private bufferEvent(event: LiveEvent): void {
+    if (this.inboxSize <= 0) return;
+    if (
+      event.type === "listeners" &&
+      this.inbox[this.inbox.length - 1]?.type === "listeners"
+    ) {
+      this.inbox[this.inbox.length - 1] = event;
+      return;
+    }
+    this.inbox.push(event);
+    while (this.inbox.length > this.inboxSize) this.inbox.shift();
   }
 
   private waitBackoff(): Promise<void> {

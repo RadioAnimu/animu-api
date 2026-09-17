@@ -28,12 +28,14 @@ definitions exported from the package.
 | `track.timestart` | `number` (coerced) | epoch ms; `0` falls back to `Date.now()` |
 | `track.artworks.{tiny,medium,large}` | `string?` | |
 | `track.playlist.track_id` | `number` (coerced) | becomes `Track.id` |
+| `track.playlist.title` | `string?` | becomes `Track.playlistName` (realtime stream fills it; `""` when absent) |
 | `listeners` / `currentListeners` / `active_listeners` / `total` | `number` (coerced) | first alias present wins |
 
 > **Business rules**
 > - Listener aliases are tried in order: `listeners` → `currentListeners` → `active_listeners` → `total`. Negative/non-numeric values clamp to `0`.
 > - `track` is `null` when the payload has no track object.
 > - `Track.isRequest` is `true` when `rawtitle` contains `pedido` (case-insensitive).
+> - `Track.title`/`Track.artist` prefer the server-resolved `track.title`/`track.artist` when present (the Go daemon resolves them from RadioBoss/jingle search for live DJ blocks); the `rawtitle` parse (`Artist - Title | Anime`) is only the fallback.
 > - Artwork is resolved by quality chain and must end in an image extension, else the default cover.
 
 ---
@@ -331,11 +333,12 @@ for await (const event of animu.live.events()) {
 > - `status` semantics — `"autodj"`: AutoDJ playing (station-side DJ-name match); `"live"`: a human DJ; `"offline"`: station down after 5 consecutive failed upstream polls.
 > - While offline the payload is a **placeholder track** (`artist: "Rádio Animu"`, `title: "Offline — Voltamos já!"`, `album: "Animu Offline"`, no-cover artwork, `duration`/`timestart` 0, `listeners` 0, `rawtitle: "Rádio Animu - Offline | Voltamos já!"`) plus `offline_since` (RFC3339) and `message`.
 > - Live DJ blocks marked `[NO AR]` have no resolvable length: the daemon sends `"notime"`, which this client **degrades to `duration: 0`** (so elapsed-progress helpers report `null`).
-> - One shared connection fans out to every subscriber; it opens with the first subscriber and closes with the last. Late subscribers immediately receive the last known song/listener state.
+> - One shared connection fans out to every subscriber; it opens with the first subscriber and closes with the last. The connection keeps an **inbox** (replay buffer, `inboxSize`, default 128) of recent events: a late (or re-)subscriber drains them **in order** before live events arrive, so clients consume the backlog sequentially. Consecutive `listeners` updates coalesce to the newest value; past the cap the oldest events are dropped. Set `inboxSize: 0` to keep only the previous behavior (last known song/listener state).
 > - Delivery is best-effort, not queued: the server may skip a slow client (`song_change` remains authoritative — the next event reflects the current state) and the stream sends **no keep-alive comments**, so middleboxes may cut idle connections — covered by automatic reconnect with capped exponential backoff + jitter (`reconnect`, `minReconnectDelay`, `maxReconnectDelay`, `reconnectJitter`). HTTP 4xx other than `408`/`429` is treated as permanent and does not retry.
 > - Every `song_change` also carries the current `listeners`; `onListeners` additionally fires with it only when the value actually changed (deduped against the previous event).
 > - The track is mapped exactly like section 1 (`trackFromMetadata`), so `track` is `null`-safe, artwork quality and `isRequest` behave identically.
 > - The stream is long-lived and deliberately has no request timeout. Use a streaming-capable fetch — browsers, Node ≥ 18, Deno, Bun natively; `expo/fetch` in React Native.
+> - Per `events()` consumer, pending events are bounded (`maxPending`, default 120): back-to-back `listeners` updates coalesce and past the cap the oldest pending events are dropped, so a slow reader never accumulates a stale unbounded backlog.
 > - `SSEDecoder` is exported standalone for custom transports; `message` events (no `event:` field) are treated as `song_change`.
 
 ---

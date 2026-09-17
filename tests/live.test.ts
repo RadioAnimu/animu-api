@@ -256,6 +256,110 @@ describe("AnimuLive", () => {
     second.close();
   });
 
+  it("drains the inbox in order for late subscribers, coalescing listeners", async () => {
+    const fetchImpl: FetchLike = async () =>
+      sseResponse([
+        sseEvent("song_change", liveSongChangePayload),
+        sseEvent("listeners", { listeners: 23 }),
+        sseEvent("listeners", { listeners: 24 }),
+        sseEvent("listeners", { listeners: 25 }),
+      ]);
+    const live = new AnimuLive({ fetchImpl, reconnect: false, url: LIVE_URL });
+
+    const first = live.subscribe({});
+    await waitFor(() => expect(live.lastListeners).toEqual({ value: 25 }));
+
+    const seen: string[] = [];
+    const late = live.subscribe({
+      onSongChange: (s) => seen.push(`song:${s.track?.raw}`),
+      onListeners: (l) => seen.push(`listeners:${l.value}`),
+    });
+    expect(seen).toEqual([
+      "song:Kikuo feat. Hatsune Miku - Kimi wa Dekinai Ko",
+      "listeners:25",
+    ]);
+
+    first.close();
+    late.close();
+  });
+
+  it("keeps a bounded inbox, dropping the oldest events", async () => {
+    const frame = (listeners: number): string =>
+      sseEvent("song_change", {
+        ...liveSongChangePayload,
+        rawtitle: `Artist - Song ${listeners}`,
+        track: {
+          ...liveSongChangePayload.track,
+          title: `Song ${listeners}`,
+          artist: "Artist",
+        },
+        listeners,
+      });
+
+    // Three songs buffered into an inbox of 2, followed by a listener tick →
+    // the inbox keeps only the 2 newest events (drop-uldest), so a late
+    // subscriber sees the last song (in order) + latest count.
+    // The stream stays open (never closes) so this stays a live connection.
+    const live = new AnimuLive({
+      fetchImpl: async () => {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (const chunk of [
+              frame(1),
+              frame(2),
+              frame(3),
+              sseEvent("listeners", { listeners: 30 }),
+            ]) {
+              controller.enqueue(encoder.encode(chunk));
+            }
+          },
+        });
+        return { ok: true, status: 200, body: stream } as unknown as Response;
+      },
+      url: LIVE_URL,
+      inboxSize: 2,
+    });
+    const first = live.subscribe({});
+    await waitFor(() => expect(live.lastListeners).toEqual({ value: 30 }));
+
+    const seen: string[] = [];
+    const late = live.subscribe({
+      onSongChange: (s) => seen.push(`${s.track?.title}/${s.listeners.value}`),
+      onListeners: (l) => seen.push(`listeners:${l.value}`),
+    });
+    expect(seen).toEqual(["Song 3/3", "listeners:30"]);
+
+    first.close();
+    late.close();
+  });
+
+  it("coalesces consecutive listeners updates in events() order", async () => {
+    const live = new AnimuLive({
+      fetchImpl: async () =>
+        sseResponse([
+          sseEvent("song_change", liveSongChangePayload),
+          sseEvent("listeners", { listeners: 1 }),
+          sseEvent("listeners", { listeners: 2 }),
+        ]),
+      reconnect: false,
+      url: LIVE_URL,
+      maxPending: 2,
+    });
+
+    const first = live.subscribe({});
+    const events: string[] = [];
+    for await (const event of live.events()) {
+      if (event.type === "song_change") events.push("song");
+      if (event.type === "listeners") {
+        events.push(`listeners:${event.listeners.value}`);
+        break;
+      }
+    }
+    expect(events).toEqual(["song", "listeners:2"]);
+
+    first.close();
+  });
+
   it("emits an error for malformed payloads without crashing", async () => {
     const fetchImpl: FetchLike = async () =>
       sseResponse(["event: song_change\ndata: {not json}\n\n"]);
