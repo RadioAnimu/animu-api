@@ -126,10 +126,32 @@ export const AuthRefreshDTOSchema = z.object({
   user: AuthUserDTOSchema,
 });
 
-/** `POST /api/v5/me/credentials.php` */
-export const AuthCredentialsDTOSchema = z.object({
-  username: z.string().catch(""),
-  set_up: z.coerce.boolean().catch(false),
+/**
+ * `POST /api/v5/auth/email/request.php` and `POST /api/v5/me/emails.php`
+ * (add-email step 1): always answers generically `{ sent: true }`.
+ */
+export const AuthEmailSentDTOSchema = z.object({
+  sent: z.coerce.boolean().catch(false),
+});
+
+/** One entry of the account's Animu Connect email list. */
+export const AuthEmailDTOSchema = z.object({
+  id: z.coerce.number(),
+  email: z.string(),
+  source: z.string().catch("provider"),
+  provider: z.string().nullable().catch(null),
+  verified: z.coerce.boolean().catch(false),
+  removable: z.coerce.boolean().catch(false),
+});
+
+/** `GET|POST|DELETE /api/v5/me/emails.php` and `POST /api/v5/me/emails/verify.php` */
+export const AuthEmailsDTOSchema = z.object({
+  emails: z.array(AuthEmailDTOSchema).catch([]),
+});
+
+/** `POST`/`DELETE /api/v5/me/emails.php` (DELETE adds `removed`). */
+export const AuthEmailRemoveDTOSchema = AuthEmailsDTOSchema.extend({
+  removed: z.coerce.boolean().catch(false),
 });
 
 /** `POST /api/v5/me/link.php` */
@@ -187,7 +209,10 @@ export type AuthSessionStatusDTO = z.infer<typeof AuthSessionStatusDTOSchema>;
 export type LinkedProviderDTO = z.infer<typeof LinkedProviderDTOSchema>;
 export type AuthProfileDTO = z.infer<typeof AuthProfileDTOSchema>;
 export type AuthRefreshDTO = z.infer<typeof AuthRefreshDTOSchema>;
-export type AuthCredentialsDTO = z.infer<typeof AuthCredentialsDTOSchema>;
+export type AuthEmailSentDTO = z.infer<typeof AuthEmailSentDTOSchema>;
+export type AuthEmailDTO = z.infer<typeof AuthEmailDTOSchema>;
+export type AuthEmailsDTO = z.infer<typeof AuthEmailsDTOSchema>;
+export type AuthEmailRemoveDTO = z.infer<typeof AuthEmailRemoveDTOSchema>;
 export type AuthLinkDTO = z.infer<typeof AuthLinkDTOSchema>;
 export type AuthUnlinkDTO = z.infer<typeof AuthUnlinkDTOSchema>;
 export type AuthAvatarDTO = z.infer<typeof AuthAvatarDTOSchema>;

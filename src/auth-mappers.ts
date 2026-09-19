@@ -1,5 +1,8 @@
 import type {
-  AuthCredentialsDTO,
+  AuthEmailDTO,
+  AuthEmailRemoveDTO,
+  AuthEmailSentDTO,
+  AuthEmailsDTO,
   AuthLinkDTO,
   AuthProfileDTO,
   AuthRefreshDTO,
@@ -13,7 +16,10 @@ import type {
 } from "./auth-schemas.js";
 import type {
   AuthBanner,
-  AuthCredentialsResult,
+  AuthAccountEmail,
+  AuthEmailsResult,
+  AuthEmailRequestResult,
+  AuthRemoveEmailResult,
   AuthLinkResult,
   AuthProfile,
   AuthRefreshResult,
@@ -140,11 +146,31 @@ export function authRefreshFromDTO(
   };
 }
 
-/** Maps a credentials setup/update payload. */
-export function authCredentialsFromDTO(
-  dto: AuthCredentialsDTO,
-): AuthCredentialsResult {
-  return { username: dto.username, setUp: dto.set_up };
+/** Maps a generic `{ sent }` result (login-code / add-email requests). */
+export function authEmailSentFromDTO(dto: AuthEmailSentDTO): AuthEmailRequestResult {
+  return { sent: dto.sent };
+}
+
+/** Maps an Animu Connect email list entry. */
+export function authEmailFromDTO(dto: AuthEmailDTO): AuthAccountEmail {
+  return {
+    id: dto.id,
+    email: dto.email,
+    source: dto.source,
+    provider: dto.provider,
+    verified: dto.verified,
+    removable: dto.removable,
+  };
+}
+
+/** Maps an Animu Connect email list payload. */
+export function authEmailsFromDTO(dto: AuthEmailsDTO): AuthEmailsResult {
+  return { emails: dto.emails.map(authEmailFromDTO) };
+}
+
+/** Maps the remove-extra-email payload. */
+export function authRemoveEmailFromDTO(dto: AuthEmailRemoveDTO): AuthRemoveEmailResult {
+  return { removed: dto.removed, emails: dto.emails.map(authEmailFromDTO) };
 }
 
 /** Maps a provider-link payload. */

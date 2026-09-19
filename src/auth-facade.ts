@@ -3,7 +3,9 @@ import { AnimuApiError } from "./errors.js";
 import { HttpClient, type BinaryResponse, type RequestOptions } from "./http.js";
 import {
   AuthAvatarDTOSchema,
-  AuthCredentialsDTOSchema,
+  AuthEmailRemoveDTOSchema,
+  AuthEmailSentDTOSchema,
+  AuthEmailsDTOSchema,
   AuthDeleteDTOSchema,
   AuthLinkDTOSchema,
   AuthLogoutDTOSchema,
@@ -17,7 +19,10 @@ import {
   unwrapEnvelope,
 } from "./auth-schemas.js";
 import {
-  authCredentialsFromDTO,
+  authRemoveEmailFromDTO,
+  authEmailFromDTO,
+  authEmailsFromDTO,
+  authEmailSentFromDTO,
   authLinkFromDTO,
   authProfileFromDTO,
   authRefreshFromDTO,
@@ -31,18 +36,19 @@ import {
 } from "./auth-mappers.js";
 import type {
   AnimuAuthOptions,
-  AuthCredentialsResult,
+  AuthEmailCodeParams,
+  AuthEmailRequestResult,
+  AuthEmailsResult,
   AuthExchangeParams,
   AuthImage,
   AuthLinkParams,
   AuthLinkResult,
-  AuthNativeLoginParams,
   AuthProfile,
   AuthProviderName,
   AuthRefreshResult,
   AuthSession,
   AuthSessionStatus,
-  AuthSetCredentialsParams,
+  AuthRemoveEmailResult,
   AuthUnlinkResult,
   LegacyMobileSession,
   MobileAuthRedirect,
@@ -205,20 +211,40 @@ export class AnimuAuth {
   }
 
   /**
-   * Logs in with Animu Connect (username/password).
+   * Animu Connect — requests the 4-digit login code to be emailed to `email`.
    *
-   * There is no native signup: credentials are created from an existing
-   * account via {@link setCredentials}. After 8 failed attempts the username
-   * is locked for 5 minutes.
+   * The answer is always generic (no email enumeration): a code is only sent
+   * when the address belongs to an account, and resends inside the server's
+   * cooldown window are silently ignored. Follow up with
+   * {@link verifyEmailLoginCode}.
    *
-   * @throws {AnimuApiError} `401 native_auth_failed` (bad credentials or lock).
+   * @throws {AnimuApiError} `400 invalid_request` (malformed email).
    */
-  async nativeLogin(params: AuthNativeLoginParams): Promise<AuthSession> {
+  async requestEmailLoginCode(email: string): Promise<AuthEmailRequestResult> {
+    const data = unwrapEnvelope(
+      AuthEmailSentDTOSchema,
+      await this.postForm("auth/email/request.php", { email }),
+    );
+    return authEmailSentFromDTO(data);
+  }
+
+  /**
+   * Animu Connect: verifies the emailed 4-digit code and starts a session for
+   * the account owning the address. Providers' emails are auto-registered, so
+   * every Google/Apple/etc. login works here with no extra setup.
+   *
+   * Codes are single-use, expire after 600 s, are refused after 5 wrong
+   * attempts, and resend waits 60 s (`EMAIL_CODE_*`).
+   *
+   * @throws {AnimuApiError} `401 email_code_failed` (wrong/expired code or
+   * too many attempts).
+   */
+  async verifyEmailLoginCode(params: AuthEmailCodeParams): Promise<AuthSession> {
     const data = unwrapEnvelope(
       AuthSessionDTOSchema,
-      await this.postForm("auth/native.php", {
-        username: params.username,
-        password: params.password,
+      await this.postForm("auth/email/verify.php", {
+        email: params.email,
+        code: params.code,
       }),
     );
     const session = authSessionFromDTO(data, this.baseUrl);
@@ -293,32 +319,91 @@ export class AnimuAuth {
     return authRefreshFromDTO(data, this.baseUrl);
   }
 
+  // ─── Animu Connect emails (session required) ────────────────────────────
+
   /**
-   * Sets up or updates Animu Connect credentials.
-   *
-   * `currentPassword` is required whenever credentials already exist (i.e. to
-   * change the username or the password). The username is a login credential,
-   * not the public display name.
-   *
-   * @throws {AnimuApiError} `409 credentials_failed`.
+   * Lists the account's Animu Connect emails: the provider emails
+   * (auto-registered at login/link — Google/Apple/etc. work with no setup)
+   * plus the optional extra `source: "animu"` address.
    */
-  async setCredentials(
-    params: AuthSetCredentialsParams,
-    sessionId?: string,
-  ): Promise<AuthCredentialsResult> {
+  async getEmails(sessionId?: string): Promise<AuthEmailsResult> {
     const data = unwrapEnvelope(
-      AuthCredentialsDTOSchema,
-      await this.postForm(
-        "me/credentials.php",
-        {
-          username: params.username,
-          password: params.password,
-          current_password: params.currentPassword,
-        },
+      AuthEmailsDTOSchema,
+      await this.http.get<unknown>(
+        this.url("me/emails.php"),
         this.requireSession(sessionId),
       ),
     );
-    return authCredentialsFromDTO(data);
+    return authEmailsFromDTO(data);
+  }
+
+  /**
+   * Requests a code to add (or replace) the account's extra Animu Connect
+   * email — there is **at most one** `source: "animu"` email; verifying with
+   * {@link verifyAddEmail} replaces it.
+   *
+   * @throws {AnimuApiError} `400 invalid_request`, `409 email_taken` (the
+   * email already belongs to any account, including your own provider emails).
+   */
+  async requestAddEmail(
+    email: string,
+    sessionId?: string,
+  ): Promise<AuthEmailRequestResult> {
+    const data = unwrapEnvelope(
+      AuthEmailSentDTOSchema,
+      await this.postForm(
+        "me/emails.php",
+        { email },
+        this.requireSession(sessionId),
+      ),
+    );
+    return authEmailSentFromDTO(data);
+  }
+
+  /**
+   * Verifies the code sent to the new email and stores it as the account's
+   * extra Animu Connect email, replacing any previous one.
+   *
+   * @returns The updated email list.
+   * @throws {AnimuApiError} `401 email_code_failed`, `409 email_taken`.
+   */
+  async verifyAddEmail(
+    params: AuthEmailCodeParams,
+    sessionId?: string,
+  ): Promise<AuthEmailsResult> {
+    const data = unwrapEnvelope(
+      AuthEmailsDTOSchema,
+      await this.postForm(
+        "me/emails/verify.php",
+        { email: params.email, code: params.code },
+        this.requireSession(sessionId),
+      ),
+    );
+    return authEmailsFromDTO(data);
+  }
+
+  /**
+   * Removes the extra Animu Connect email (`source: "animu"`). Provider
+   * emails are not removable this way (server answers `404`).
+   *
+   * @returns `removed: true` plus the updated list.
+   * @throws {AnimuApiError} `404 not_found`.
+   */
+  async removeEmail(
+    emailId: number,
+    sessionId?: string,
+  ): Promise<AuthRemoveEmailResult> {
+    const data = unwrapEnvelope(
+      AuthEmailRemoveDTOSchema,
+      await this.http.delete<unknown>(
+        this.url("me/emails.php"),
+        JSON.stringify({ email_id: emailId }),
+        this.requireSession(sessionId, {
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    return authRemoveEmailFromDTO(data);
   }
 
   /**

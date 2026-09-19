@@ -112,10 +112,46 @@ export interface AuthRefreshResult {
   user: AuthUser;
 }
 
-/** State of the account's Animu Connect (native username/password) login. */
-export interface AuthCredentialsResult {
-  username: string;
-  setUp: boolean;
+/** Result of requesting an Animu Connect email code (`data.sent`). */
+export interface AuthEmailRequestResult {
+  /** Always `true` — the server answers generically (no email enumeration). */
+  sent: boolean;
+}
+
+/**
+ * One of the account's Animu Connect emails: the provider emails
+ * (auto-registered at login/link) plus the optional extra `source: "animu"`
+ * email added from the profile.
+ */
+export interface AuthAccountEmail {
+  id: number;
+  /** Normalized (trim + lowercase) address. */
+  email: string;
+  /** `"provider"` for auto-registered provider emails, `"animu"` for the extra one. */
+  source: "provider" | "animu" | string;
+  /** The provider that registered it (`null` for the extra Animu Connect email). */
+  provider: AuthProviderName | null;
+  verified: boolean;
+  /** `true` only for the extra `source: "animu"` email (removable via DELETE). */
+  removable: boolean;
+}
+
+/** Result of the email-list / verify-email endpoints. */
+export interface AuthEmailsResult {
+  emails: AuthAccountEmail[];
+}
+
+/** Result of removing the extra Animu Connect email. */
+export interface AuthRemoveEmailResult extends AuthEmailsResult {
+  removed: boolean;
+}
+
+/** Parameters for verifying an Animu Connect email login code. */
+export interface AuthEmailCodeParams {
+  /** The address the code was sent to. */
+  email: string;
+  /** The 4-digit code (`EmailCodeTtl` 600 s, 5 attempts, 60 s resend cooldown). */
+  code: string;
 }
 
 /** Result of linking an additional provider. */
@@ -175,20 +211,10 @@ export interface AuthExchangeParams {
   lastName?: string;
 }
 
-/** Parameters for Animu Connect (native username/password) login. */
-export interface AuthNativeLoginParams {
-  username: string;
-  password: string;
-}
-
-/** Parameters for setting up or updating Animu Connect credentials. */
-export interface AuthSetCredentialsParams {
-  /** Login credential (3–32 chars: `[a-z0-9_.-]`), not the public name. */
-  username: string;
-  /** Required when setting up; optional when only renaming. */
-  password?: string;
-  /** Required whenever credentials already exist. */
-  currentPassword?: string;
+/** Field for requesting the removal of one of the account's emails. */
+export interface AuthRemoveEmailParams {
+  /** Id of the email to remove — only the extra `source: "animu"` one is removable. */
+  emailId: number;
 }
 
 /** Parameters for linking an additional provider via its OAuth code or native identity token. */

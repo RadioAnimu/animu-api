@@ -257,7 +257,7 @@ Delivery guarantees:
 
 The [Animu Login System](https://github.com/RadioAnimu/login-system-project)
 replaces the legacy Discord flow with multi-provider OAuth (Discord, Google,
-Apple), an optional native **Animu Connect** username/password layer and full
+Apple, Fluxer), a passwordless **Animu Connect** email-code layer and full
 profile management. `AnimuAuth` is the client for that service.
 
 ```ts
@@ -285,11 +285,11 @@ Server failures throw `AnimuApiError` with `.statusCode` and `.code`; network/ti
 | 400 | `invalid_upload` | Avatar missing/unsupported/too large |
 | 400 | `link_failed` / `unlink_failed` | Link/unlink rejected |
 | 401 | `token_exchange_failed` / `provider_error` | Provider rejected the code |
-| 401 | `native_auth_failed` | Bad Animu Connect credentials or lockout |
+| 401 | `email_code_failed` | Wrong/expired Animu Connect email code, or too many attempts |
 | 401 | `unauthenticated` | No valid session (also thrown client-side without token) |
 | 403 | `forbidden_origin` | CSRF guard (cookie-authenticated cross-origin) |
 | 404 | `unknown_provider` / `no_avatar` / `no_banner` | — |
-| 409 | `credentials_failed` / `refresh_failed` / `link_conflict` / `last_provider` | — |
+| 409 | `email_taken` / `refresh_failed` / `link_conflict` / `last_provider` | — |
 | 422 | `avatar_nsfw` | Safety filter |
 
 ## Session transport
@@ -341,9 +341,19 @@ await auth.exchangeToken({
 });
 ```
 
-### `nativeLogin({ username, password })` — `POST /api/v5/auth/native.php`
+### `requestEmailLoginCode(email)` — `POST /api/v5/auth/email/request.php` → `{ sent: true }`
 
-No native signup — credentials are created via `setCredentials`. 8 failed attempts locks the username for 5 min.
+Animu Connect: emails a single-use 4-digit login code (TTL 600 s, 5 attempts,
+60 s resend cooldown). The answer is always generic — a code is only sent when
+the address belongs to an account (no email enumeration). Provider emails are
+auto-registered at login/link, so every Google/Apple/etc. login works here with
+no extra setup.
+
+### `verifyEmailLoginCode({ email, code })` — `POST /api/v5/auth/email/verify.php` → `AuthSession`
+
+Verifies the code and starts a session (same response as `exchangeToken`).
+Errors: `400 invalid_request` (malformed email), `401 email_code_failed`
+(wrong/expired code or too many attempts).
 
 ### `getSessionStatus(sessionId?)` — `GET /api/v5/auth/session-status.php` → `{ authenticated, sessionToken }`
 
@@ -357,9 +367,26 @@ No native signup — credentials are created via `setCredentials`. 8 failed atte
 
 Re-fetches every linked provider and re-evaluates `verified`.
 
-### `setCredentials({ username, password?, currentPassword? })` — `POST /api/v5/me/credentials.php` → `{ username, setUp }`
+### `getEmails(sessionId?)` — `GET /api/v5/me/emails.php` → `{ emails: AuthAccountEmail[] }`
 
-Username `^[a-z0-9_.-]{3,32}$` (login credential, not the display name). Changes always require `currentPassword`.
+The account's Animu Connect emails: provider emails (auto-registered,
+`source: "provider"`, not removable) plus the optional extra `source: "animu"`
+one — there is always **at most one** extra email.
+
+### `requestAddEmail(email, sessionId?)` — `POST /api/v5/me/emails.php` → `{ sent: true }`
+
+Emails a code to add/replace the extra email. `409 email_taken` when the address
+already belongs to any account (including your own provider emails).
+
+### `verifyAddEmail({ email, code }, sessionId?)` — `POST /api/v5/me/emails/verify.php` → `{ emails }`
+
+Verifies the code and stores the address as the account's extra Animu Connect
+email. `401 email_code_failed`, `409 email_taken`.
+
+### `removeEmail(emailId, sessionId?)` — `DELETE /api/v5/me/emails.php` → `{ removed, emails }`
+
+Only the extra `source: "animu"` email is removable; provider emails answer
+`404 not_found`.
 
 ### `linkProvider(params)` — `POST /api/v5/me/link.php`
 

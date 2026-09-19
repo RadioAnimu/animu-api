@@ -66,7 +66,7 @@ client decodes UTF-8 internally, no `TextDecoder` global required.
 ## Auth (v5)
 
 Multi-provider OAuth (Discord, Google, Apple), Animu Connect
-(username/password) and profile management via the
+(passwordless email codes) and profile management via the
 [Animu Login System](https://github.com/RadioAnimu/login-system-project).
 Also reachable as `animu.auth`.
 
@@ -80,7 +80,8 @@ const { user, sessionToken } = await auth.exchangeToken({
   redirectUri: "myapp://callback",
 });
 const profile = await auth.getProfile();      // reuses the stored sessionToken
-await auth.setCredentials({ username: "nova_", password: "hunter2hunter2" });
+await auth.requestEmailLoginCode("meu@email.com");   // email → emailed 4-digit code
+await auth.verifyEmailLoginCode({ email: "meu@email.com", code: "1234" });
 const linked = await auth.linkProvider({ provider: "google", code, redirectUri });
 await auth.unlinkProvider("google");
 const avatar = await auth.getAvatar();        // { bytes, contentType }
@@ -170,12 +171,16 @@ notably `inboxSize` (replay buffer for late subscribers, default 128) and
 | --- | --- |
 | `getProviders()` | Configured login providers |
 | `exchangeToken(params)` | OAuth code → session (primary mobile login) |
-| `nativeLogin(params)` | Animu Connect username/password login |
+| `requestEmailLoginCode(email)` | Animu Connect: email the 4-digit code |
+| `verifyEmailLoginCode({ email, code })` | Verify the code → session |
 | `getSessionStatus(sessionId?)` | Is the token authenticated? |
 | `logout(sessionId?)` | Destroy the session |
 | `getProfile(sessionId?)` | Full profile, providers, banner, session |
 | `refreshProfile(sessionId?)` | Re-pull provider data + `verified` |
-| `setCredentials(params, sessionId?)` | Set up / update Animu Connect |
+| `getEmails(sessionId?)` | List the account's Animu Connect emails |
+| `requestAddEmail(email, sessionId?)` | Email code to add/replace the extra email |
+| `verifyAddEmail(params, sessionId?)` | Verify + store the extra email |
+| `removeEmail(emailId, sessionId?)` | Remove the extra email |
 | `linkProvider(params, sessionId?)` | Link another provider via OAuth code |
 | `unlinkProvider(provider, sessionId?)` | Unlink a provider |
 | `getAvatar(sessionId?)` | Avatar bytes |

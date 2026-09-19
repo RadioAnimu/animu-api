@@ -63,7 +63,10 @@ export {
   validateLiveRequest,
 } from "./mappers.js";
 export {
-  authCredentialsFromDTO,
+  authRemoveEmailFromDTO,
+  authEmailFromDTO,
+  authEmailsFromDTO,
+  authEmailSentFromDTO,
   authLinkFromDTO,
   authProfileFromDTO,
   authRefreshFromDTO,

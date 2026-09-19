@@ -166,19 +166,49 @@ describe("exchangeToken", () => {
   });
 });
 
-describe("nativeLogin", () => {
-  it("maps verified and the avatar path", async () => {
+describe("requestEmailLoginCode / verifyEmailLoginCode", () => {
+  it("posts the email and answers generically", async () => {
     const { fn, calls } = mockFetch([
-      { match: (u) => u.endsWith("/api/v5/auth/native.php"), reply: () => jsonResponse({ ok: true, data: { session_token: "native-sess", action: "login", user: { ...userPayload, avatar_url: "api/v5/me/avatar.php", verified: true } } }) },
+      { match: (u) => u.endsWith("/api/v5/auth/email/request.php"), reply: () => jsonResponse({ ok: true, data: { sent: true } }) },
+    ]);
+    const auth0 = auth(fn);
+
+    const result = await auth0.requestEmailLoginCode("meu@email.com");
+
+    expect(String(calls[0]!.body)).toBe("email=meu%40email.com");
+    expect(result).toEqual({ sent: true });
+    expect(auth0.sessionToken).toBeNull(); // a code request never bundles a session
+  });
+
+  it("surfaces invalid_request", async () => {
+    const { fn } = mockFetch([
+      { match: () => true, reply: () => jsonResponse({ ok: false, error: { code: "invalid_request", message: "malformed email" } }, 400) },
+    ]);
+    await expect(auth(fn).requestEmailLoginCode("")).rejects.toMatchObject({ code: "invalid_request", statusCode: 400 });
+  });
+
+  it("verifies the code, maps the session and stores the token", async () => {
+    const { fn, calls } = mockFetch([
+      { match: (u) => u.endsWith("/api/v5/auth/email/verify.php"), reply: () => jsonResponse({ ok: true, data: { session_token: "email-sess", action: "login", user: { ...userPayload, email: "meu@email.com", avatar_url: "api/v5/me/avatar.php", verified: true } } }) },
     ]);
     const client = auth(fn);
 
-    const session = await client.nativeLogin({ username: "nova_", password: "supersecret" });
+    const session = await client.verifyEmailLoginCode({ email: "meu@email.com", code: "1234" });
 
-    expect(String(calls[0]!.body)).toBe("username=nova_&password=supersecret");
+    const body = String(calls[0]!.body);
+    expect(body).toContain("email=meu%40email.com");
+    expect(body).toContain("code=1234");
+    expect(session.user.email).toBe("meu@email.com");
     expect(session.user.verified).toBe(true);
     expect(session.user.avatarUrl).toBe(`${BASE}/api/v5/me/avatar.php`);
-    expect(client.sessionToken).toBe("native-sess");
+    expect(client.sessionToken).toBe("email-sess");
+  });
+
+  it("surfaces email_code_failed", async () => {
+    const { fn } = mockFetch([
+      { match: () => true, reply: () => jsonResponse({ ok: false, error: { code: "email_code_failed", message: "wrong code" } }, 401) },
+    ]);
+    await expect(auth(fn).verifyEmailLoginCode({ email: "meu@email.com", code: "0000" })).rejects.toMatchObject({ code: "email_code_failed", statusCode: 401 });
   });
 });
 
@@ -319,29 +349,64 @@ describe("refreshProfile", () => {
   });
 });
 
-describe("setCredentials", () => {
-  it("posts the credentials and maps set_up", async () => {
+describe("emails (me/emails.php)", () => {
+  const emailsPayload = {
+    emails: [
+      { id: 1, email: "meu@gmail.com", source: "provider", provider: "google", verified: true, removable: false },
+      { id: 2, email: "outro@email.com", source: "animu", provider: null, verified: true, removable: true },
+    ],
+  };
+
+  it("lists the emails", async () => {
     const { fn, calls } = mockFetch([
-      { match: (u) => u.endsWith("/api/v5/me/credentials.php"), reply: () => jsonResponse({ ok: true, data: { username: "space.pilot", set_up: true } }) },
+      { match: (u) => u.endsWith("/api/v5/me/emails.php"), reply: () => jsonResponse({ ok: true, data: emailsPayload }) },
     ]);
 
-    const result = await auth(fn, "s").setCredentials({ username: "space.pilot", password: "password123", currentPassword: "old" });
+    const list = await auth(fn, "s").getEmails();
 
-    const body = String(calls[0]!.body);
-    expect(body).toContain("username=space.pilot");
-    expect(body).toContain("password=password123");
-    expect(body).toContain("current_password=old");
-    expect(result).toEqual({ username: "space.pilot", setUp: true });
+    expect(calls[0]!.url).toBe(`${BASE}/api/v5/me/emails.php`);
+    expect(list).toEqual({
+      emails: [
+        { id: 1, email: "meu@gmail.com", source: "provider", provider: "google", verified: true, removable: false },
+        { id: 2, email: "outro@email.com", source: "animu", provider: null, verified: true, removable: true },
+      ],
+    });
   });
 
-  it("surfaces credentials_failed", async () => {
-    const { fn } = mockFetch([
-      { match: () => true, reply: () => jsonResponse({ ok: false, error: { code: "credentials_failed", message: "username already taken" } }, 409) },
+  it("requests the add-email code and verifies it", async () => {
+    const { fn, calls } = mockFetch([
+      { match: (u) => u.endsWith("/api/v5/me/emails.php"), reply: () => jsonResponse({ ok: true, data: { sent: true } }) },
+      { match: (u) => u.endsWith("/me/emails/verify.php"), reply: () => jsonResponse({ ok: true, data: emailsPayload }) },
     ]);
-    await expect(auth(fn, "s").setCredentials({ username: "taken" })).rejects.toMatchObject({ code: "credentials_failed", statusCode: 409 });
+
+    const a = auth(fn, "s");
+    const sent = await a.requestAddEmail("outro@email.com");
+    expect(String(calls[0]!.body)).toBe("email=outro%40email.com");
+    expect(sent).toEqual({ sent: true });
+
+    const verified = await a.verifyAddEmail({ email: "outro@email.com", code: "1234" });
+    expect(String(calls[1]!.body)).toContain("code=1234");
+    expect(verified.emails).toHaveLength(2);
+  });
+
+  it("deletes the extra email with a JSON body", async () => {
+    const { fn, calls } = mockFetch([
+      { match: (u) => u.endsWith("/me/emails.php"), reply: () => jsonResponse({ ok: true, data: { removed: true, emails: [] } }) },
+    ]);
+
+    const result = await auth(fn, "s").removeEmail(2);
+
+    expect(calls[0]!.body).toBe(JSON.stringify({ email_id: 2 }));
+    expect(result.removed).toBe(true);
+  });
+
+  it("surfaces email_taken", async () => {
+    const { fn } = mockFetch([
+      { match: () => true, reply: () => jsonResponse({ ok: false, error: { code: "email_taken", message: "email already in use" } }, 409) },
+    ]);
+    await expect(auth(fn, "s").requestAddEmail("outro@email.com")).rejects.toMatchObject({ code: "email_taken", statusCode: 409 });
   });
 });
-
 describe("link / unlink", () => {
   it("links a provider and returns the updated linked list", async () => {
     const { fn, calls } = mockFetch([
