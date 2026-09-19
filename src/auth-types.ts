@@ -1,4 +1,5 @@
 import type { FetchLike } from "./http.js";
+import type { ClientInfo } from "./types.js";
 
 /**
  * Provider identifier as configured server-side (e.g. `"discord"`,
@@ -314,6 +315,11 @@ export interface AnimuAuthOptions {
   baseUrl?: string;
   /** Sent as the User-Agent header on every request. Default: `"animu-api"`. */
   userAgent?: string;
+  /**
+   * Optional client descriptor: derives the User-Agent (when `userAgent` is
+   * absent) and attaches `X-Client-*` headers to every auth request.
+   */
+  clientInfo?: ClientInfo;
   /** Per-request timeout in ms (default: 20000). */
   timeout?: number;
   /**

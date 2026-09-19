@@ -1,4 +1,5 @@
 import { DEFAULT_COVER, DEFAULT_USER_AGENT, ENDPOINTS, FALLBACK_STREAMS } from "./endpoints.js";
+import { clientHeaders, resolveUserAgent } from "./client-info.js";
 import { AnimuApiError, ValidationError, type RequestResult } from "./errors.js";
 import { HttpClient, toFormData } from "./http.js";
 import { AnimuAuth } from "./auth.js";
@@ -73,22 +74,30 @@ export class AnimuApi {
 
   /** @param options - All fields optional; sensible Animu defaults are built in. */
   constructor(options: AnimuApiOptions = {}) {
+    const userAgent = resolveUserAgent(
+      options.userAgent,
+      options.clientInfo,
+      DEFAULT_USER_AGENT,
+    );
     this.http = new HttpClient(
-      options.userAgent ?? DEFAULT_USER_AGENT,
+      userAgent,
       options.timeout ?? 20000,
       options.fetchImpl,
+      clientHeaders(options.clientInfo),
     );
     this.artworkQuality = options.artworkQuality ?? "medium";
     this.defaultCover = options.defaultCover ?? DEFAULT_COVER;
     this.fallbackStreams = options.fallbackStreams ?? [...FALLBACK_STREAMS];
     this.authOptions = {
-      userAgent: options.userAgent ?? DEFAULT_USER_AGENT,
+      userAgent,
+      clientInfo: options.clientInfo,
       timeout: options.timeout ?? 20000,
       fetchImpl: options.fetchImpl,
       baseUrl: options.authBaseUrl,
     };
     this.liveOptions = {
-      userAgent: options.userAgent ?? DEFAULT_USER_AGENT,
+      userAgent,
+      clientInfo: options.clientInfo,
       fetchImpl: options.fetchImpl,
       url: options.liveUrl,
       artworkQuality: options.artworkQuality ?? "medium",
@@ -242,21 +251,19 @@ export class AnimuApi {
   async submitMusicRequest(
     submission: MusicRequestSubmission,
   ): Promise<RequestResult> {
+    // Session transport: the endpoint adopts `PHPSESSID` from the body for
+    // every client, so no client-type flag is needed. Client identity now
+    // travels in the `X-Client-*` headers / User-Agent instead.
     const formData = toFormData({
       allmusic: submission.trackId,
       message: submission.message,
       PHPSESSID: submission.sessionId,
     });
 
-    // `mobileapp=1` is a server-side protocol flag required by the
-    // submission endpoint — it is not client-specific.
     const response = await this.http.post<string>(
       ENDPOINTS.requestSubmit,
       formData,
-      {
-        params: { mobileapp: "1" },
-        responseType: "text",
-      },
+      { responseType: "text" },
     );
 
     return parseSubmissionResponse(response);

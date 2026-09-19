@@ -1,4 +1,5 @@
 import { DEFAULT_COVER, DEFAULT_USER_AGENT, ENDPOINTS } from "./endpoints.js";
+import { clientHeaders, resolveUserAgent } from "./client-info.js";
 import { AnimuApiError } from "./errors.js";
 import type { FetchLike } from "./http.js";
 import { liveListenersFromDTO, liveNowPlayingFromDTO } from "./mappers.js";
@@ -330,9 +331,16 @@ export class AnimuLive {
 
   constructor(options: LiveOptions = {}) {
     this.url = options.url ?? ENDPOINTS.live;
-    this.userAgent = options.userAgent ?? DEFAULT_USER_AGENT;
+    this.userAgent = resolveUserAgent(
+      options.userAgent,
+      options.clientInfo,
+      DEFAULT_USER_AGENT,
+    );
     this.fetchImpl = options.fetchImpl ?? ((...args) => fetch(...args));
-    this.headers = options.headers ?? {};
+    this.headers = {
+      ...clientHeaders(options.clientInfo),
+      ...(options.headers ?? {}),
+    };
     this.artworkQuality = options.artworkQuality ?? "medium";
     this.defaultCover = options.defaultCover ?? DEFAULT_COVER;
     this.reconnect = options.reconnect ?? true;

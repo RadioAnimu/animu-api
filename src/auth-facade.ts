@@ -1,4 +1,5 @@
 import { DEFAULT_USER_AGENT, ENDPOINTS } from "./endpoints.js";
+import { clientHeaders, resolveUserAgent } from "./client-info.js";
 import { AnimuApiError } from "./errors.js";
 import { HttpClient, type BinaryResponse, type RequestOptions } from "./http.js";
 import {
@@ -118,9 +119,10 @@ export class AnimuAuth {
   constructor(options: AnimuAuthFacadeOptions = {}) {
     this.baseUrl = (options.baseUrl ?? ENDPOINTS.auth).replace(/\/+$/, "");
     this.http = new HttpClient(
-      options.userAgent ?? DEFAULT_USER_AGENT,
+      resolveUserAgent(options.userAgent, options.clientInfo, DEFAULT_USER_AGENT),
       options.timeout ?? 20000,
       options.fetchImpl,
+      clientHeaders(options.clientInfo),
     );
     this.sessions = options.sessionStore ?? new SessionStore(options.sessionToken);
     if (options.sessionStore && options.sessionToken != null) {

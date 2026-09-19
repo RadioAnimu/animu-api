@@ -124,7 +124,8 @@ All options are optional.
 
 ```ts
 new AnimuApi({
-  userAgent,        // "animu-api"
+  userAgent,        // "animu-api" (or derived from clientInfo)
+  clientInfo,       // { platform, app, version, build, os, model, language, ... }
   timeout,          // 20_000 ms
   artworkQuality,   // "medium" — "off" | "low" | "medium" | "high"
   defaultCover,     // Animu's default cover

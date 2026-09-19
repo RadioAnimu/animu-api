@@ -116,7 +116,11 @@ if (page.totalResults) {
 
 ## Submit music request — `submitMusicRequest()`
 
-`POST …/teste/sistemaPedidos/pedirquatro.php?mobileapp=1` (multipart: `allmusic`, `message?`, `PHPSESSID`) → `RequestResult`
+`POST …/teste/sistemaPedidos/pedirquatro.php` (multipart: `allmusic`, `message?`, `PHPSESSID`) → `RequestResult`
+
+The endpoint adopts `PHPSESSID` from the body for every client, so no
+client-type query flag is sent. Client identity travels in the `X-Client-*`
+headers / User-Agent built from `clientInfo`.
 
 - Empty body = **success**.
 - `erro: false` → `PANEL_UNAVAILABLE`.
@@ -245,7 +249,8 @@ Delivery guarantees:
 
 | Feature | Value |
 | --- | --- |
-| User-Agent | `animu-api` (configurable) |
+| User-Agent | `animu-api`, or derived from `clientInfo` |
+| Client headers | `X-Client-*` from `clientInfo` (native only) |
 | Timeout | 20 s per request (`AbortController`) |
 | GET micro-cache | 2.5 s per URL; bypass with `noCache` / `forceRefresh` |
 | JSON parsing | falls back to raw text for non-JSON bodies |
@@ -481,7 +486,8 @@ Refusing error bodies (`{ error, message? }`) with HTTP 200 still throw
 
 | Feature | Value |
 | --- | --- |
-| User-Agent | `animu-api` (configurable) |
+| User-Agent | `animu-api`, or derived from `clientInfo` |
+| Client headers | `X-Client-*` from `clientInfo` (native only) |
 | Timeout | 20 s per request, `AbortController`-based |
 | GET micro-cache | 2.5 s per URL; bypass with `noCache` or `forceRefresh` |
 | JSON parsing | raw-text fallback for non-JSON bodies |

@@ -2,6 +2,12 @@ export { AnimuApi } from "./animu-api.js";
 export { AnimuAuth, type AnimuAuthFacadeOptions } from "./auth.js";
 export { SessionStore } from "./session-store.js";
 export {
+  asciiSafe,
+  clientHeaders,
+  clientUserAgent,
+  resolveUserAgent,
+} from "./client-info.js";
+export {
   AppleAdapter,
   DiscordAdapter,
   FluxerAdapter,

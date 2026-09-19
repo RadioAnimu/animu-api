@@ -5,6 +5,46 @@ export type ArtworkQuality = "off" | "low" | "medium" | "high";
 /** Which history endpoint to query. */
 export type HistoryType = "requests" | "played";
 
+/** Client platform reported to the API (labels/analytics only — never auth). */
+export type ClientPlatform = "ios" | "android" | "web" | "desktop" | "other";
+
+/**
+ * Optional descriptor of the calling client. The client mirror of the
+ * server-side environment detection: passed once and turned into `X-Client-*`
+ * headers and a structured User-Agent (see `client-info.ts`).
+ *
+ * All fields are advisory and client-supplied: consumers must treat them as
+ * untrusted labels, never as an authorization signal.
+ */
+export interface ClientInfo {
+  /** Stable app id, e.g. `"animu-mobile"`. */
+  app?: string;
+  /** Platform bucket used for the `X-Client-Platform` header. */
+  platform: ClientPlatform;
+  /** App version, e.g. `"2.1.0"`. */
+  version?: string;
+  /** Native build number, e.g. `"12"`. */
+  build?: string;
+  /** OS display name, e.g. `"iOS"` / `"Android"`. */
+  os?: string;
+  /** OS version, e.g. `"27"` / `"17"`. */
+  osVersion?: string;
+  /** Human-friendly device model, e.g. `"iPhone 17 Pro Max"`. */
+  model?: string;
+  /** Device manufacturer, e.g. `"Apple"`. */
+  manufacturer?: string;
+  /** `"phone"` | `"tablet"` | `"web"` | `"unknown"`. */
+  deviceType?: string;
+  /** Device BCP-47 locale, e.g. `"pt-BR"`. */
+  language?: string;
+  /** In-app UI language tag, e.g. `"pt"`. */
+  appLanguage?: string;
+  /** Region/country code, e.g. `"BR"`. */
+  region?: string;
+  /** Whether the app runs on a simulator/emulator. */
+  emulator?: boolean;
+}
+
 /** Available artwork sizes, as reported by the API. */
 export interface Artworks {
   tiny?: string;
@@ -129,6 +169,11 @@ export interface LiveOptions {
   url?: string;
   /** Sent as the `User-Agent` header. Default: `"animu-api"`. */
   userAgent?: string;
+  /**
+   * Optional client descriptor: derives the User-Agent (when `userAgent` is
+   * absent) and merges `X-Client-*` headers into every connect/reconnect.
+   */
+  clientInfo?: ClientInfo;
   /** Any fetch-compatible implementation; must return a streaming response
    * body (`expo/fetch` in React Native — the global RN fetch does not stream).
    * Custom impls need no other globals: the stream does its own incremental
@@ -254,6 +299,12 @@ export interface TokenExchangeParams {
 export interface AnimuApiOptions {
   /** Sent as the User-Agent header on every request. Default: `"animu-api"`. */
   userAgent?: string;
+  /**
+   * Optional client descriptor. When set (and `userAgent` is not), the
+   * User-Agent is derived from it and `X-Client-*` headers are attached to
+   * every API/SSE request. See {@link ClientInfo}.
+   */
+  clientInfo?: ClientInfo;
   /** Per-request timeout in ms, applied when a call doesn't override it (default: 20000). */
   timeout?: number;
   /** Fetch implementation override; defaults to the global fetch. Pass

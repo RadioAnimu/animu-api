@@ -119,11 +119,19 @@ export class HttpClient {
    * @param timeout - Default per-request timeout in ms.
    * @param fetchImpl - Fetch implementation; defaults to the global fetch.
    *   Pass `expo/fetch` in React Native for native-stack aborts/cancels.
+   * @param extraHeaders - Merged over the defaults (e.g. `X-Client-*`
+   *   identification headers built from a {@link ClientInfo}).
    */
-  constructor(userAgent: string, timeout: number, fetchImpl?: FetchLike) {
+  constructor(
+    userAgent: string,
+    timeout: number,
+    fetchImpl?: FetchLike,
+    extraHeaders: Record<string, string> = {},
+  ) {
     this.defaultHeaders = {
       "User-Agent": userAgent,
       "Content-Type": "application/json",
+      ...extraHeaders,
     };
     this.defaultTimeout = timeout;
     this.fetchImpl = fetchImpl ?? ((...args) => fetch(...args));

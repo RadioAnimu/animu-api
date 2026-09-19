@@ -175,7 +175,7 @@ describe("searchMusic", () => {
 });
 
 describe("submitMusicRequest", () => {
-  it("posts FormData with mobileapp=1 and parses the result", async () => {
+  it("posts FormData without a client-type flag and parses the result", async () => {
     const fetchMock = mockFetch([
       { match: (u) => u.includes("pedirquatro"), reply: () => jsonResponse("") },
     ]);
@@ -187,7 +187,7 @@ describe("submitMusicRequest", () => {
     });
 
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toContain("mobileapp=1");
+    expect(url).not.toContain("mobileapp");
     expect(init?.method).toBe("POST");
     const form = init?.body as FormData;
     expect(form.get("allmusic")).toBe("9126");
@@ -385,5 +385,49 @@ describe("options", () => {
     const [, init] = fetchMock.mock.calls[0]!;
     expect((init?.headers as Record<string, string>)["User-Agent"]).toBe("Custom/1.0");
     expect(track?.artwork).toBe(metadataPayload.track.artworks.tiny);
+  });
+
+  it("derives a structured user agent and X-Client-* headers from clientInfo", async () => {
+    const fetchMock = mockFetch([
+      { match: () => true, reply: () => jsonResponse(metadataPayload) },
+    ]);
+
+    await new AnimuApi({
+      clientInfo: {
+        app: "animu-mobile",
+        platform: "ios",
+        version: "2.1.0",
+        build: "3",
+        os: "iOS",
+        osVersion: "27",
+        model: "iPhone 17 Pro Max",
+        language: "pt-BR",
+      },
+    }).getStreamMetadata();
+
+    const [, init] = fetchMock.mock.calls[0]!;
+    const headers = init?.headers as Record<string, string>;
+    expect(headers["User-Agent"]).toBe(
+      "RadioAnimu/2.1.0 (iOS 27; iPhone 17 Pro Max; pt-BR; build 3)",
+    );
+    expect(headers["X-Client-Platform"]).toBe("ios");
+    expect(headers["X-Client-App"]).toBe("animu-mobile");
+    expect(headers["X-Client-Version"]).toBe("2.1.0");
+    expect(headers["X-Device-Model"]).toBe("iPhone 17 Pro Max");
+  });
+
+  it("omits X-Client-* headers for the web platform", async () => {
+    const fetchMock = mockFetch([
+      { match: () => true, reply: () => jsonResponse(metadataPayload) },
+    ]);
+
+    await new AnimuApi({
+      clientInfo: { platform: "web", os: "Web", language: "en-US" },
+    }).getStreamMetadata();
+
+    const [, init] = fetchMock.mock.calls[0]!;
+    const headers = init?.headers as Record<string, string>;
+    expect(headers["X-Client-Platform"]).toBeUndefined();
+    expect(headers["User-Agent"]).toBe("RadioAnimu/0 (Web; en-US)");
   });
 });
