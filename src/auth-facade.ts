@@ -71,7 +71,7 @@ export interface AnimuAuthFacadeOptions extends AnimuAuthOptions {
 
 /**
  * Facade for the **Animu Auth API v5** — multi-provider OAuth (Discord,
- * Google, Apple, Fluxer) plus the native "Animu Connect" username/password
+ * Google, Apple, Fluxer) plus the passwordless "Animu Connect" email-code
  * layer and full profile management.
  *
  * Architecturally this mirrors the auth server it talks to (`Auth/` in the
@@ -307,7 +307,9 @@ export class AnimuAuth {
 
   /**
    * Re-fetches every linked provider (refreshing stored tokens first) and
-   * updates the profile + the `verified` flag.
+   * updates the profile + the `verified` flag. Also reconciles the account's
+   * Animu Connect email rows: provider emails missing from the list are
+   * (re-)registered.
    *
    * @throws {AnimuApiError} `409 refresh_failed`.
    */
@@ -338,12 +340,14 @@ export class AnimuAuth {
   }
 
   /**
-   * Requests a code to add (or replace) the account's extra Animu Connect
-   * email — there is **at most one** `source: "animu"` email; verifying with
-   * {@link verifyAddEmail} replaces it.
+   * Requests a code to add the account's ONE extra Animu Connect
+   * email — there is **at most one** `source: "animu"` email, and the add is
+   * refused (`400 invalid_request`) while one exists; remove it first with
+   * {@link removeEmail}.
    *
-   * @throws {AnimuApiError} `400 invalid_request`, `409 email_taken` (the
-   * email already belongs to any account, including your own provider emails).
+   * @throws {AnimuApiError} `400 invalid_request` (extra email already set or
+   * malformed email), `409 email_taken` (the email already belongs to any
+   * account, including your own provider emails).
    */
   async requestAddEmail(
     email: string,
@@ -362,7 +366,8 @@ export class AnimuAuth {
 
   /**
    * Verifies the code sent to the new email and stores it as the account's
-   * extra Animu Connect email, replacing any previous one.
+   * extra Animu Connect email (replaced in place server-side — the unique
+   * index guarantees at most one), and retries first-logins that race.
    *
    * @returns The updated email list.
    * @throws {AnimuApiError} `401 email_code_failed`, `409 email_taken`.
@@ -436,7 +441,8 @@ export class AnimuAuth {
 
   /**
    * Unlinks a provider. Fails with `last_provider` when it is the account's
-   * only social login — link another provider or set up Animu Connect first.
+   * only **social** provider — Animu Connect email is a login method but not a
+   * provider, so link another provider first (or delete the account).
    *
    * @throws {AnimuApiError} `400 unlink_failed`, `409 last_provider`.
    */
@@ -533,7 +539,7 @@ export class AnimuAuth {
   // ─── Account (session required) ─────────────────────────────────────────
 
   /**
-   * Permanently deletes the profile, its links, Animu Connect credentials and
+    * Permanently deletes the profile, its links, Animu Connect emails and
    * sessions (irreversible). Clears the stored token.
    */
   async deleteAccount(sessionId?: string): Promise<boolean> {

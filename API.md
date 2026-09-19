@@ -281,7 +281,8 @@ Server failures throw `AnimuApiError` with `.statusCode` and `.code`; network/ti
 
 | HTTP | `code` | Meaning |
 | --- | --- | --- |
-| 400 | `missing_params` | exchange-token missing params |
+| 400 | `missing_params` | exchange-token missing params; `unlink` missing `provider` |
+| 400 | `invalid_request` | Malformed email on code requests; extra email already set on `emails.php` POST |
 | 400 | `invalid_upload` | Avatar missing/unsupported/too large |
 | 400 | `link_failed` / `unlink_failed` | Link/unlink rejected |
 | 401 | `token_exchange_failed` / `provider_error` | Provider rejected the code |
@@ -289,7 +290,11 @@ Server failures throw `AnimuApiError` with `.statusCode` and `.code`; network/ti
 | 401 | `unauthenticated` | No valid session (also thrown client-side without token) |
 | 403 | `forbidden_origin` | CSRF guard (cookie-authenticated cross-origin) |
 | 404 | `unknown_provider` / `no_avatar` / `no_banner` | — |
-| 409 | `email_taken` / `refresh_failed` / `link_conflict` / `last_provider` | — |
+| 404 | `not_found` | `emails.php` DELETE: no removable (extra) email with that id |
+| 409 | `email_taken` | Email already belongs to another account (or yours, as a provider email) |
+| 409 | `refresh_failed` | Could not refresh from the provider |
+| 409 | `link_conflict` | Provider identity already belongs to another profile |
+| 409 | `last_provider` | Unlinking would leave no social **provider** (the Animu Connect email is a login method, not a provider) |
 | 422 | `avatar_nsfw` | Safety filter |
 
 ## Session transport
@@ -361,11 +366,12 @@ Errors: `400 invalid_request` (malformed email), `401 email_code_failed`
 
 ### `getProfile(sessionId?)` — `GET /api/v5/me/profile.php` → `AuthProfile`
 
-`{ user, banner, linkedProviders, availableProviders, session, links }`; notable fields: `user.avatarUrl` (relative paths resolved against `baseUrl`), `banner.color` (accent fallback), `linkedProviders[]` (`providerUserId`/`Email`/`Username`/`Name`), `session.loginProvider`.
+`{ user, banner, linkedProviders, availableProviders, session, links }`; notable fields: `user.avatarUrl` (relative paths resolved against `baseUrl`), `banner.color` (accent fallback), `session.loginProvider` (`discord|google|fluxer|apple|animu`, `"animu"` = email-code login).
 
 ### `refreshProfile(sessionId?)` — `POST /api/v5/me/refresh.php` → `{ updated, verified, user }`
 
-Re-fetches every linked provider and re-evaluates `verified`.
+Re-fetches every linked provider and re-evaluates `verified`; also reconciles
+missing provider-email Animu Connect rows.
 
 ### `getEmails(sessionId?)` — `GET /api/v5/me/emails.php` → `{ emails: AuthAccountEmail[] }`
 
@@ -375,13 +381,15 @@ one — there is always **at most one** extra email.
 
 ### `requestAddEmail(email, sessionId?)` — `POST /api/v5/me/emails.php` → `{ sent: true }`
 
-Emails a code to add/replace the extra email. `409 email_taken` when the address
-already belongs to any account (including your own provider emails).
+Emails a code to add the ONE extra email; refused with `400 invalid_request`
+while an extra email exists (remove it first). `409 email_taken` when the
+address already belongs to any account (including your own provider emails).
 
 ### `verifyAddEmail({ email, code }, sessionId?)` — `POST /api/v5/me/emails/verify.php` → `{ emails }`
 
 Verifies the code and stores the address as the account's extra Animu Connect
-email. `401 email_code_failed`, `409 email_taken`.
+email (replaced in place; at most one is guaranteed). `401 email_code_failed`,
+`409 email_taken`.
 
 ### `removeEmail(emailId, sessionId?)` — `DELETE /api/v5/me/emails.php` → `{ removed, emails }`
 
@@ -394,7 +402,8 @@ Same provider params as `exchangeToken` (plus optional `user` for the Apple `for
 
 ### `unlinkProvider(provider)` — `POST /api/v5/me/unlink.php` → `{ unlinked, provider, needsSetup, linkedProviders }`
 
-At least one social provider must remain; `needsSetup` reaches `true` when the account lost its identity.
+At least one social **provider** must remain — the Animu Connect email is a
+login method, not a provider. `needsSetup` reaches `true` when the account lost its identity.
 
 ### Avatar / banner / account
 
@@ -403,7 +412,7 @@ await auth.getAvatar();        // GET  → { bytes, contentType }
 await auth.uploadAvatar({ avatar, filename? }); // POST, jpeg/png/webp/gif ≤ 8 MB → URL
 await auth.resetAvatar();      // DELETE → provider avatar URL
 await auth.getBanner();        // banner has no upload/reset — provider-derived
-await auth.deleteAccount();    // irreversible: profile, links, credentials, sessions
+await auth.deleteAccount();    // irreversible: profile, links, Animu Connect emails, sessions
 ```
 
 `getAvatar` resolves custom upload → cached provider → provider CDN, streaming

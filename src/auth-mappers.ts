@@ -57,7 +57,7 @@ export function authUserFromDTO(dto: AuthUserDTO, baseUrl: string): AuthUser {
   };
 }
 
-/** Maps a login result (`exchangeToken` / `nativeLogin`). */
+/** Maps a login result (`exchangeToken` / `verifyEmailLoginCode`). */
 export function authSessionFromDTO(
   dto: AuthSessionDTO,
   baseUrl: string,

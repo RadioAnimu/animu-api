@@ -48,7 +48,7 @@ export interface AuthUser {
   createdAt: string | null;
 }
 
-/** Result of a successful login (`exchangeToken` / `nativeLogin`). */
+/** Result of a successful login (`exchangeToken` / `verifyEmailLoginCode`). */
 export interface AuthSession {
   /** `PHPSESSID` value; stored on the client and sent as `X-Session-Id`. */
   sessionToken: string;
@@ -74,10 +74,15 @@ export interface AuthBanner {
   color: string | null;
 }
 
-/** Which identity provider minted the current session. */
+/** Which identity source minted the current session. */
 export interface AuthSessionInfo {
   sessionId: string;
-  loginProvider: AuthProviderName | "native" | null;
+  /**
+   * `discord|google|fluxer|apple` for provider logins, `"animu"` for an
+   * Animu Connect email-code login (`"native"` is the pre-v6 name, kept for
+   * deploys older than the passwordless rename).
+   */
+  loginProvider: AuthProviderName | "animu" | "native" | null;
   /** Epoch seconds of the last activity, per the server. */
   lastActivity: number;
 }

@@ -64,7 +64,10 @@ export const ProviderListDTOSchema = z.object({
   providers: z.array(ProviderDTOSchema),
 });
 
-/** `POST /api/v5/auth/exchange-token.php` + `POST /api/v5/auth/native.php` */
+/**
+ * `POST /api/v5/auth/exchange-token.php`, `POST /api/v5/auth/email/verify.php`
+ * and `POST /api/v5/me/emails/verify.php`-style session/`user` payloads.
+ */
 export const AuthSessionDTOSchema = z.object({
   session_token: z.string(),
   action: z.string().catch("login"),
