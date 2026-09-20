@@ -454,9 +454,15 @@ export class AnimuLive {
     };
 
     const subscription = this.subscribe({
-      onSongChange: (song) => enqueue({ type: "song_change", song }),
+      onSongChange: (song) =>
+        enqueue({ type: "song_change", song, ts: song.receivedAt.getTime() }),
       onListeners: (listeners, receivedAt) =>
-        enqueue({ type: "listeners", listeners, receivedAt }),
+        enqueue({
+          type: "listeners",
+          listeners,
+          receivedAt,
+          ts: receivedAt.getTime(),
+        }),
       onOpen: () => enqueue({ type: "open" }),
       onError: (error) => enqueue({ type: "error", error }),
       onClose: () => {
@@ -606,7 +612,11 @@ export class AnimuLive {
         this.defaultCover,
       );
       this.currentSong = song;
-      this.bufferEvent({ type: "song_change", song });
+      this.bufferEvent({
+        type: "song_change",
+        song,
+        ts: song.receivedAt.getTime(),
+      });
 
       const previous = this.currentListeners?.listeners.value;
       this.currentListeners = { listeners: song.listeners, at: song.receivedAt };
@@ -630,7 +640,12 @@ export class AnimuLive {
       const listeners = liveListenersFromDTO(dto);
       const at = new Date();
       this.currentListeners = { listeners, at };
-      this.bufferEvent({ type: "listeners", listeners, receivedAt: at });
+      this.bufferEvent({
+        type: "listeners",
+        listeners,
+        receivedAt: at,
+        ts: at.getTime(),
+      });
       for (const subscriber of this.subscribers) {
         this.safe(() => subscriber.onListeners?.(listeners, at));
       }

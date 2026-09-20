@@ -237,6 +237,61 @@ describe("AnimuLive", () => {
     expect(sub.closed).toBe(true);
   });
 
+  it("stamps every event with an epoch-ms arrival timestamp", async () => {
+    const live = new AnimuLive({
+      fetchImpl: async () =>
+        sseResponse([
+          sseEvent("song_change", liveSongChangePayload),
+          sseEvent("listeners", liveListenersPayload),
+        ]),
+      reconnect: false,
+      url: LIVE_URL,
+    });
+
+    const stamps: number[] = [];
+    const first = live.subscribe({});
+    for await (const event of live.events()) {
+      if (event.type !== "song_change" && event.type !== "listeners") continue;
+      stamps.push(event.ts);
+      if (stamps.length === 2) break;
+    }
+    expect(stamps).toHaveLength(2);
+    for (const stamp of stamps) {
+      expect(Number.isInteger(stamp)).toBe(true);
+      expect(stamp).toBeLessThanOrEqual(Date.now());
+    }
+
+    first.close();
+  });
+
+  it("keeps the original arrival timestamp when replaying inbox events", async () => {
+    const live = new AnimuLive({
+      fetchImpl: async () =>
+        sseResponse([sseEvent("song_change", liveSongChangePayload)]),
+      reconnect: false,
+      url: LIVE_URL,
+    });
+
+    const first = live.subscribe({});
+    await waitFor(() => expect(live.lastSong).not.toBeNull());
+
+    const seen: number[] = [];
+    const late = live.subscribe({
+      onSongChange: () => {}, // handled via events() to read ts
+    });
+    for await (const event of live.events()) {
+      if (event.type === "song_change") {
+        seen.push(event.ts);
+        break;
+      }
+    }
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBeLessThanOrEqual(Date.now());
+
+    first.close();
+    late.close();
+  });
+
   it("replays the last song to late subscribers", async () => {
     const fetchImpl: FetchLike = async () =>
       sseResponse([sseEvent("song_change", liveSongChangePayload)]);

@@ -201,7 +201,7 @@ sub-second listener ticks a 1 s poller can miss.
 
 Timing semantics (verified against real traffic):
 
-- `track.timestart` — epoch **ms**; `Track.startTime` = that instant. Station-accurate: consecutive starts land ~1–3 s apart from the previous track's stated end (upstream RadioBoss drift, not a unit bug).
+- `track.timestart` — epoch **ms**; `Track.startTime` = that instant. Station-accurate: consecutive starts land ~1–3 s apart from the previous track's stated end (upstream RadioBoss drift, not a unit bug). This is the station-side timestamp of a song — event payloads carry no server clock for `listeners`; every mapped event exposes `ts`, the client arrival time in epoch ms (replayed inbox events keep their original stamp).
 - `track.duration` — **ms**. Live DJ blocks marked `[NO AR]` have no resolvable length: the daemon sends `"notime"`, which degrades to `duration: 0` ⇒ `getTrackProgress()` reports `null` (intended).
 - `status`: `"autodj"` (DJ-name match), `"live"` (human DJ), `"offline"` (station down after 5 consecutive failed upstream polls → placeholder track: artist `"Rádio Animu"`, title `"Offline — Voltamos já!"`, no-cover artwork, zeroed duration/listeners, plus `offline_since` + `message`).
 
@@ -217,10 +217,12 @@ const stop = animu.live.subscribe({
 // later
 stop.close();
 
-// Ordered queue consumption
+// Ordered queue consumption — every event carries `ts` (epoch ms, arrival;
+// inbox replays keep their original stamp; the authoritative station-side
+// timestamp of a song is `song.track.startTime`)
 for await (const event of animu.live.events(signal)) {
-  if (event.type === "song_change") render(event.song);
-  if (event.type === "listeners") updateCounter(event.listeners.value);
+  if (event.type === "song_change") render(event.song, event.ts);
+  if (event.type === "listeners") updateCounter(event.listeners.value, event.ts);
 }
 ```
 

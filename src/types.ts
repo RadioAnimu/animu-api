@@ -128,11 +128,13 @@ export interface LiveNowPlaying {
 
 /**
  * A single realtime event, as yielded by {@link AnimuLive.events}. Discriminated
- * by `type`.
+ * by `type`. `ts` is the epoch-ms timestamp the client received the event
+ * (inbox replays keep the original arrival stamp; the authoritative
+ * station-side timestamp of a song is `song.track.startTime`).
  */
 export type LiveEvent =
-  | { type: "song_change"; song: LiveNowPlaying }
-  | { type: "listeners"; listeners: Listeners; receivedAt: Date }
+  | { type: "song_change"; song: LiveNowPlaying; ts: number }
+  | { type: "listeners"; listeners: Listeners; receivedAt: Date; ts: number }
   | { type: "open" }
   | { type: "error"; error: Error }
   | { type: "close" };
