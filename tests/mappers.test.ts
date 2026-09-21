@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   artworkSizeRank,
@@ -172,7 +173,7 @@ describe("deriveArtworkVariants / artworkSizeRank", () => {
 
 describe("trackFromMetadata", () => {
   it("maps a full metadata payload", () => {
-    const dto = StreamMetadataDTOSchema.parse(metadataPayload);
+    const dto = v.parse(StreamMetadataDTOSchema, metadataPayload);
     const track = trackFromMetadata(dto, "medium", DEFAULT_COVER);
 
     expect(track).toMatchObject({
@@ -188,7 +189,7 @@ describe("trackFromMetadata", () => {
   });
 
   it("flags pedidos as requests", () => {
-    const dto = StreamMetadataDTOSchema.parse({
+    const dto = v.parse(StreamMetadataDTOSchema, {
       ...metadataPayload,
       rawtitle: "Pedido: LiSA - Gurenge | Kimetsu no Yaiba",
     });
@@ -196,7 +197,7 @@ describe("trackFromMetadata", () => {
   });
 
   it("prefers the server-resolved track artist/title over the rawtitle parse", () => {
-    const dto = StreamMetadataDTOSchema.parse({
+    const dto = v.parse(StreamMetadataDTOSchema, {
       ...metadataPayload,
       rawtitle: "Raw Artist - Raw Title | Raw Anime",
     });
@@ -206,7 +207,7 @@ describe("trackFromMetadata", () => {
   });
 
   it("falls back to the rawtitle parse when the track omits artist/title", () => {
-    const dto = StreamMetadataDTOSchema.parse(metadataPayloadWithAlias);
+    const dto = v.parse(StreamMetadataDTOSchema, metadataPayloadWithAlias);
     const track = trackFromMetadata(dto, "medium", DEFAULT_COVER);
     expect(track?.artist).toBe("Yuki Kajiura");
     expect(track?.title).toBe("track of twilight");
@@ -215,7 +216,7 @@ describe("trackFromMetadata", () => {
   it("splits the anime out of a server title that still embeds it", () => {
     // The Go daemon's titleBreaker only splits on " - ", so its track.title
     // keeps the "| Anime" suffix — the rawtitle parse must win in that case.
-    const dto = StreamMetadataDTOSchema.parse({
+    const dto = v.parse(StreamMetadataDTOSchema, {
       ...metadataPayload,
       rawtitle: "Toguro Otouto - Cry Lonely Cry | Yu Yu Hakusho",
       track: {
@@ -231,7 +232,7 @@ describe("trackFromMetadata", () => {
   });
 
   it("exposes the playlist name", () => {
-    const dto = StreamMetadataDTOSchema.parse({
+    const dto = v.parse(StreamMetadataDTOSchema, {
       ...metadataPayload,
       track: { ...metadataPayload.track, playlist: { track_id: 1, title: "Animu Toca" } },
     });
@@ -239,7 +240,7 @@ describe("trackFromMetadata", () => {
       "Animu Toca",
     );
     expect(trackFromMetadata(
-      StreamMetadataDTOSchema.parse(metadataPayload),
+      v.parse(StreamMetadataDTOSchema, metadataPayload),
       "medium",
       DEFAULT_COVER,
     )?.playlistName).toBe("");
@@ -251,7 +252,7 @@ describe("trackFromMetadata", () => {
 
   it("guards a zero timestart with the current time", () => {
     vi.useFakeTimers({ now: 1788408452000 });
-    const dto = StreamMetadataDTOSchema.parse({
+    const dto = v.parse(StreamMetadataDTOSchema, {
       ...metadataPayload,
       track: { ...metadataPayload.track, timestart: "0" },
     });
@@ -342,7 +343,7 @@ describe("historyFromDTO", () => {
 
 describe("musicRequestFromDTO + paginationFromDTO", () => {
   it("maps title, artwork from the web base and requestability", () => {
-    const dto = MusicRequestResponseDTOSchema.parse(searchResponsePayload);
+    const dto = v.parse(MusicRequestResponseDTOSchema, searchResponsePayload);
     const first = musicRequestFromDTO(dto.objects[0]!, "high", DEFAULT_COVER);
     expect(first).toEqual({
       id: "9126",
@@ -356,7 +357,7 @@ describe("musicRequestFromDTO + paginationFromDTO", () => {
   });
 
   it("search rows obey the artwork quality — the same setting as now-playing", () => {
-    const dto = MusicRequestResponseDTOSchema.parse(searchResponsePayload);
+    const dto = v.parse(MusicRequestResponseDTOSchema, searchResponsePayload);
     // Row 2 carries every size: image_large/image_medium/image_tiny pairs
     // map to the CDN's size suffixes, so quality picks the same URL family
     // now-playing would pick for that track.
@@ -384,7 +385,7 @@ describe("musicRequestFromDTO + paginationFromDTO", () => {
   });
 
   it("quality falls back down the chain when only one size exists", () => {
-    const dto = MusicRequestResponseDTOSchema.parse(searchResponsePayload);
+    const dto = v.parse(MusicRequestResponseDTOSchema, searchResponsePayload);
     // Row 1 (Silversun) only carries image_tiny
     expect(musicRequestFromDTO(dto.objects[1]!, "high", DEFAULT_COVER).artwork).toBe(
       "https://www.animu.moe//media/tracks/trackImage9200_tiny.jpg",
@@ -395,7 +396,7 @@ describe("musicRequestFromDTO + paginationFromDTO", () => {
   });
 
   it("uses author fallback and flags timestrike as not requestable", () => {
-    const dto = MusicRequestResponseDTOSchema.parse(searchResponsePayload);
+    const dto = v.parse(MusicRequestResponseDTOSchema, searchResponsePayload);
     const second = musicRequestFromDTO(dto.objects[1]!, "high", DEFAULT_COVER);
     // No dash in the song part → the whole part becomes the artist (app parity)
     expect(second.artist).toBe("Silversun");

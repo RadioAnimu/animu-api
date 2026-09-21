@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { DEFAULT_COVER, DEFAULT_USER_AGENT, ENDPOINTS, FALLBACK_STREAMS } from "./endpoints.js";
 import { clientHeaders, resolveUserAgent } from "./client-info.js";
 import { AnimuApiError, ValidationError, type RequestResult } from "./errors.js";
@@ -148,7 +149,8 @@ export class AnimuApi {
    * @throws {ValidationError} When the payload fails schema validation.
    */
   async getStreamMetadata(): Promise<StreamMetadata> {
-    const dto = StreamMetadataDTOSchema.parse(
+    const dto = v.parse(
+      StreamMetadataDTOSchema,
       await this.http.get<unknown>(ENDPOINTS.api),
     );
     return {
@@ -178,7 +180,8 @@ export class AnimuApi {
    * @throws {AnimuApiError} On network/HTTP failures.
    */
   async getProgram(): Promise<Program> {
-    const dto = ProgramDTOSchema.parse(
+    const dto = v.parse(
+      ProgramDTOSchema,
       await this.http.get<unknown>(ENDPOINTS.program),
     );
     return programFromDTO(dto);
@@ -215,7 +218,8 @@ export class AnimuApi {
    * @throws {ValidationError} When the response fails schema validation.
    */
   async searchMusic(params: MusicSearchParams): Promise<MusicRequestPagination> {
-    const dto = MusicRequestResponseDTOSchema.parse(
+    const dto = v.parse(
+      MusicRequestResponseDTOSchema,
       await this.http.get<unknown>(ENDPOINTS.requestSearch, { params: params as unknown as Record<string, string | number | boolean> }),
     );
     return paginationFromDTO(dto, this.artworkQuality, this.defaultCover);
@@ -327,7 +331,8 @@ export class AnimuApi {
     }
 
     try {
-      const data = StreamListDTOSchema.parse(
+      const data = v.parse(
+        StreamListDTOSchema,
         await this.http.get<unknown>(ENDPOINTS.streams, {
           headers: { "Content-Type": "application/json" },
           noCache: forceRefresh,

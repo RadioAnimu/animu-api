@@ -1,52 +1,59 @@
-import { z } from "zod";
+import * as v from "valibot";
+
+/**
+ * Coercion helpers. The API has shipped numeric fields as strings, so
+ * numbers are coerced at the boundary (equivalent to `z.coerce.number()` /
+ * `z.coerce.boolean()`).
+ */
+const coerceNumber = v.pipe(v.unknown(), v.transform(Number), v.number());
+const coerceBoolean = v.pipe(v.unknown(), v.transform(Boolean), v.boolean());
 
 /**
  * Now-playing payload from the API base URL.
  *
- * The API has shipped numeric fields as strings, so numbers are coerced.
  * `track` is optional: payloads without track data degrade to a null track.
  */
-export const TrackDTOSchema = z.object({
-  rawtitle: z.string().optional(),
-  track: z
-    .object({
-      artist: z.string().optional(),
-      title: z.string().optional(),
-      album: z.string().optional(),
-      duration: z.coerce.number(),
-      timestart: z.coerce.number(),
-      artworks: z
-        .object({
-          tiny: z.string().optional(),
-          medium: z.string().optional(),
-          large: z.string().optional(),
-        })
-        .optional(),
-      playlist: z
-        .object({
-          track_id: z.coerce.number(),
-          title: z.string().optional(),
-        })
-        .optional(),
-    })
-    .optional(),
+const TrackObjectSchema = v.object({
+  artist: v.optional(v.string()),
+  title: v.optional(v.string()),
+  album: v.optional(v.string()),
+  duration: coerceNumber,
+  timestart: coerceNumber,
+  artworks: v.optional(
+    v.object({
+      tiny: v.optional(v.string()),
+      medium: v.optional(v.string()),
+      large: v.optional(v.string()),
+    }),
+  ),
+  playlist: v.optional(
+    v.object({
+      track_id: coerceNumber,
+      title: v.optional(v.string()),
+    }),
+  ),
+});
+
+export const TrackDTOSchema = v.object({
+  rawtitle: v.optional(v.string()),
+  track: v.optional(TrackObjectSchema),
 });
 
 /**
  * Listener count fields. The field name varies between endpoints/versions —
  * all known aliases are accepted and coerced (the API has sent strings).
  */
-export const ListenersDTOSchema = z.object({
-  listeners: z.coerce.number().optional(),
-  currentListeners: z.coerce.number().optional(),
-  active_listeners: z.coerce.number().optional(),
-  total: z.coerce.number().optional(),
+export const ListenersDTOSchema = v.object({
+  listeners: v.optional(coerceNumber),
+  currentListeners: v.optional(coerceNumber),
+  active_listeners: v.optional(coerceNumber),
+  total: v.optional(coerceNumber),
 });
 
 /** Combined schema for the BASE_URL payload (track info + listener count). */
-export const StreamMetadataDTOSchema = z.object({
-  ...TrackDTOSchema.shape,
-  ...ListenersDTOSchema.shape,
+export const StreamMetadataDTOSchema = v.object({
+  ...TrackDTOSchema.entries,
+  ...ListenersDTOSchema.entries,
 });
 
 /**
@@ -58,30 +65,33 @@ export const StreamMetadataDTOSchema = z.object({
  * its duration can be the literal string `"notime"` (no length was resolved)
  * — that case degrades to `0` instead of failing the whole event.
  */
-export const LiveSongChangeDTOSchema = StreamMetadataDTOSchema.extend({
-  track: TrackDTOSchema.shape.track
-    .unwrap()
-    .extend({ duration: z.coerce.number().catch(0) })
-    .optional(),
-  server_name: z.string().optional(),
-  status: z.string().optional(),
-  offline_since: z.string().optional(),
-  message: z.string().optional(),
+export const LiveSongChangeDTOSchema = v.object({
+  ...StreamMetadataDTOSchema.entries,
+  track: v.optional(
+    v.object({
+      ...TrackObjectSchema.entries,
+      duration: v.fallback(coerceNumber, 0),
+    }),
+  ),
+  server_name: v.optional(v.string()),
+  status: v.optional(v.string()),
+  offline_since: v.optional(v.string()),
+  message: v.optional(v.string()),
 });
 
 /** `listeners` event from the realtime SSE stream. */
-export const LiveListenersDTOSchema = z.object({
-  listeners: z.coerce.number(),
+export const LiveListenersDTOSchema = v.object({
+  listeners: coerceNumber,
 });
 
 /** PHP page endpoint — every field degrades to "" instead of failing. */
-export const ProgramDTOSchema = z.object({
-  locutor: z.string().catch(""),
-  programa: z.string().catch(""),
-  pedidos_ao_vivo: z.string().catch(""),
-  imagem: z.string().catch(""),
-  infoPrograma: z.string().catch(""),
-  temaPrograma: z.string().catch(""),
+export const ProgramDTOSchema = v.object({
+  locutor: v.fallback(v.string(), ""),
+  programa: v.fallback(v.string(), ""),
+  pedidos_ao_vivo: v.fallback(v.string(), ""),
+  imagem: v.fallback(v.string(), ""),
+  infoPrograma: v.fallback(v.string(), ""),
+  temaPrograma: v.fallback(v.string(), ""),
 });
 
 /**
@@ -91,71 +101,77 @@ export const ProgramDTOSchema = z.object({
  * Trailing entries are a loose union. A row that isn't an array with at
  * least two string entries fails the whole payload (consumers degrade to []).
  */
-export const TrackHistoryItemSchema = z.tuple(
-  [z.string(), z.string()],
-  z.union([z.string(), z.number()]),
+export const TrackHistoryItemSchema = v.pipe(
+  v.looseTuple([v.string(), v.string()]),
+  v.check(
+    (row) =>
+      row
+        .slice(2)
+        .every((entry) => typeof entry === "string" || typeof entry === "number"),
+    "Trailing history entries must be strings or numbers",
+  ),
 );
 
 /** Array of history rows; validated with {@link TrackHistoryItemSchema}. */
-export const TrackHistorySchema = z.array(TrackHistoryItemSchema);
+export const TrackHistorySchema = v.array(TrackHistoryItemSchema);
 
 /** One row of the request-search database. `timestrike` marks blocked tracks. */
-export const MusicRequestDTOSchema = z.object({
-  id: z.coerce.number(),
-  title: z.string(),
-  author: z.string().catch(""),
-  image_large: z.string().optional(),
-  image_medium: z.string().optional(),
-  image_tiny: z.string().optional(),
-  timestrike: z.string().optional(),
+export const MusicRequestDTOSchema = v.object({
+  id: coerceNumber,
+  title: v.string(),
+  author: v.fallback(v.string(), ""),
+  image_large: v.optional(v.string()),
+  image_medium: v.optional(v.string()),
+  image_tiny: v.optional(v.string()),
+  timestrike: v.optional(v.string()),
 });
 
 /** Paginated request-search response (Tastypie-style envelope). */
-export const MusicRequestResponseDTOSchema = z.object({
-  meta: z.object({
-    limit: z.coerce.number(),
-    next: z.string().nullable(),
-    offset: z.coerce.number(),
-    previous: z.string().nullable(),
-    total_count: z.coerce.number(),
+export const MusicRequestResponseDTOSchema = v.object({
+  meta: v.object({
+    limit: coerceNumber,
+    next: v.nullable(v.string()),
+    offset: coerceNumber,
+    previous: v.nullable(v.string()),
+    total_count: coerceNumber,
   }),
-  objects: z.array(MusicRequestDTOSchema),
+  objects: v.array(MusicRequestDTOSchema),
 });
 
 /** One audio stream from the stream list endpoint. */
-export const StreamDTOSchema = z.object({
-  id: z.string(),
-  bitrate: z.coerce.number(),
-  category: z.string(),
-  url: z.string(),
+export const StreamDTOSchema = v.object({
+  id: v.string(),
+  bitrate: coerceNumber,
+  category: v.string(),
+  url: v.string(),
 });
 
 /** Stream list — must contain at least one relay to be trusted. */
-export const StreamListDTOSchema = z.array(StreamDTOSchema).nonempty();
+export const StreamListDTOSchema = v.pipe(v.array(StreamDTOSchema), v.nonEmpty());
 
 /** Discord user payload returned by the token-exchange endpoint. */
-export const UserDTOSchema = z.object({
-  id: z.string(),
-  username: z.string(),
-  nickname: z.string(),
-  avatar: z.string(),
-  avatar_url: z.string(),
-  PHPSESSID: z.string(),
-  mfa: z.coerce.boolean(),
-  avatar_decoration_data: z.unknown().optional(),
+export const UserDTOSchema = v.object({
+  id: v.string(),
+  username: v.string(),
+  nickname: v.string(),
+  avatar: v.string(),
+  avatar_url: v.string(),
+  PHPSESSID: v.string(),
+  mfa: coerceBoolean,
+  avatar_decoration_data: v.optional(v.unknown()),
 });
 
-export type TrackDTO = z.infer<typeof TrackDTOSchema>;
-export type ListenersDTO = z.infer<typeof ListenersDTOSchema>;
-export type StreamMetadataDTO = z.infer<typeof StreamMetadataDTOSchema>;
-export type LiveSongChangeDTO = z.infer<typeof LiveSongChangeDTOSchema>;
-export type LiveListenersDTO = z.infer<typeof LiveListenersDTOSchema>;
-export type ProgramDTO = z.infer<typeof ProgramDTOSchema>;
-export type TrackHistoryItemDTO = z.infer<typeof TrackHistoryItemSchema>;
-export type TrackHistoryDTO = z.infer<typeof TrackHistorySchema>;
-export type MusicRequestDTO = z.infer<typeof MusicRequestDTOSchema>;
-export type MusicRequestResponseDTO = z.infer<
+export type TrackDTO = v.InferOutput<typeof TrackDTOSchema>;
+export type ListenersDTO = v.InferOutput<typeof ListenersDTOSchema>;
+export type StreamMetadataDTO = v.InferOutput<typeof StreamMetadataDTOSchema>;
+export type LiveSongChangeDTO = v.InferOutput<typeof LiveSongChangeDTOSchema>;
+export type LiveListenersDTO = v.InferOutput<typeof LiveListenersDTOSchema>;
+export type ProgramDTO = v.InferOutput<typeof ProgramDTOSchema>;
+export type TrackHistoryItemDTO = v.InferOutput<typeof TrackHistoryItemSchema>;
+export type TrackHistoryDTO = v.InferOutput<typeof TrackHistorySchema>;
+export type MusicRequestDTO = v.InferOutput<typeof MusicRequestDTOSchema>;
+export type MusicRequestResponseDTO = v.InferOutput<
   typeof MusicRequestResponseDTOSchema
 >;
-export type StreamDTO = z.infer<typeof StreamDTOSchema>;
-export type UserDTO = z.infer<typeof UserDTOSchema>;
+export type StreamDTO = v.InferOutput<typeof StreamDTOSchema>;
+export type UserDTO = v.InferOutput<typeof UserDTOSchema>;

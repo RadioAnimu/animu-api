@@ -1,4 +1,12 @@
-import { z } from "zod";
+import * as v from "valibot";
+
+/**
+ * Coercion helpers matching the API's loose typing (numbers/booleans/ids
+ * have all been observed as strings).
+ */
+const coerceNumber = v.pipe(v.unknown(), v.transform(Number), v.number());
+const coerceBoolean = v.pipe(v.unknown(), v.transform(Boolean), v.boolean());
+const coerceString = v.pipe(v.unknown(), v.transform(String), v.string());
 
 /**
  * Animu Auth API (v5) response envelopes.
@@ -9,30 +17,30 @@ import { z } from "zod";
  * The failure envelope is parsed by the HTTP layer (see `errorFromResponse`),
  * so `AnimuAuth` only validates the success branch here.
  */
-export function apiEnvelopeSchema<T extends z.ZodTypeAny>(data: T) {
-  return z.object({ ok: z.literal(true), data });
+export function apiEnvelopeSchema<T extends v.GenericSchema>(data: T) {
+  return v.object({ ok: v.literal(true), data });
 }
 
 /** Validates a success envelope and returns its `data` with the schema's type. */
-export function unwrapEnvelope<T extends z.ZodTypeAny>(
+export function unwrapEnvelope<T extends v.GenericSchema>(
   schema: T,
   payload: unknown,
-): z.infer<T> {
-  const parsed = apiEnvelopeSchema(schema).parse(payload) as {
-    data: z.infer<T>;
+): v.InferOutput<T> {
+  const parsed = v.parse(apiEnvelopeSchema(schema), payload) as {
+    data: v.InferOutput<T>;
   };
   return parsed.data;
 }
 
 /** The `error` object inside a failure envelope. */
-export const ApiErrorDTOSchema = z.object({
-  code: z.string().catch("unknown"),
-  message: z.string().catch(""),
+export const ApiErrorDTOSchema = v.object({
+  code: v.fallback(v.string(), "unknown"),
+  message: v.fallback(v.string(), ""),
 });
 
 /** Full failure envelope, exported for consumers who parse raw responses. */
-export const ApiErrorEnvelopeDTOSchema = z.object({
-  ok: z.literal(false),
+export const ApiErrorEnvelopeDTOSchema = v.object({
+  ok: v.literal(false),
   error: ApiErrorDTOSchema,
 });
 
@@ -42,90 +50,90 @@ export const ApiErrorEnvelopeDTOSchema = z.object({
  * `verified`/`handle` from `user`), so missing fields degrade to
  * `null`/`false` instead of failing validation.
  */
-export const AuthUserDTOSchema = z.object({
-  id: z.coerce.number(),
-  username: z.string(),
-  handle: z.string().nullable().catch(null),
-  email: z.string().nullable().catch(null),
-  avatar_url: z.string().nullable().catch(null),
-  avatar_custom: z.coerce.boolean().catch(false),
-  verified: z.coerce.boolean().catch(false),
-  created_at: z.string().nullable().catch(null),
+export const AuthUserDTOSchema = v.object({
+  id: coerceNumber,
+  username: v.string(),
+  handle: v.fallback(v.nullable(v.string()), null),
+  email: v.fallback(v.nullable(v.string()), null),
+  avatar_url: v.fallback(v.nullable(v.string()), null),
+  avatar_custom: v.fallback(coerceBoolean, false),
+  verified: v.fallback(coerceBoolean, false),
+  created_at: v.fallback(v.nullable(v.string()), null),
 });
 
 /** One configured login provider. */
-export const ProviderDTOSchema = z.object({
-  name: z.string(),
-  label: z.string(),
+export const ProviderDTOSchema = v.object({
+  name: v.string(),
+  label: v.string(),
 });
 
 /** `GET /api/v5/providers.php` */
-export const ProviderListDTOSchema = z.object({
-  providers: z.array(ProviderDTOSchema),
+export const ProviderListDTOSchema = v.object({
+  providers: v.array(ProviderDTOSchema),
 });
 
 /**
  * `POST /api/v5/auth/exchange-token.php`, `POST /api/v5/auth/email/verify.php`
  * and `POST /api/v5/me/emails/verify.php`-style session/`user` payloads.
  */
-export const AuthSessionDTOSchema = z.object({
-  session_token: z.string(),
-  action: z.string().catch("login"),
+export const AuthSessionDTOSchema = v.object({
+  session_token: v.string(),
+  action: v.fallback(v.string(), "login"),
   user: AuthUserDTOSchema,
 });
 
 /** `GET /api/v5/auth/session-status.php` */
-export const AuthSessionStatusDTOSchema = z.object({
-  authenticated: z.coerce.boolean().catch(false),
-  session_token: z.string().catch(""),
+export const AuthSessionStatusDTOSchema = v.object({
+  authenticated: v.fallback(coerceBoolean, false),
+  session_token: v.fallback(v.string(), ""),
 });
 
 /** `POST /api/v5/auth/logout.php` */
-export const AuthLogoutDTOSchema = z.object({
-  logged_out: z.coerce.boolean().catch(false),
+export const AuthLogoutDTOSchema = v.object({
+  logged_out: v.fallback(coerceBoolean, false),
 });
 
 /** A linked provider identity. */
-export const LinkedProviderDTOSchema = z.object({
-  provider: z.string(),
-  provider_user_id: z.string(),
-  provider_email: z.string().nullable().catch(null),
+export const LinkedProviderDTOSchema = v.object({
+  provider: v.string(),
+  provider_user_id: v.string(),
+  provider_email: v.fallback(v.nullable(v.string()), null),
   // Optional: the server only has these for some providers (Discord @username,
   // Google display name). Tolerate their absence on older payloads.
-  provider_username: z.string().nullish().catch(null),
-  provider_name: z.string().nullish().catch(null),
+  provider_username: v.fallback(v.nullish(v.string()), null),
+  provider_name: v.fallback(v.nullish(v.string()), null),
 });
 
-const BannerDTOSchema = z.object({
-  url: z.string().nullable().catch(null),
-  color: z.string().nullable().catch(null),
+const BannerDTOSchema = v.object({
+  url: v.fallback(v.nullable(v.string()), null),
+  color: v.fallback(v.nullable(v.string()), null),
 });
 
-const SessionInfoDTOSchema = z.object({
-  session_id: z.string().catch(""),
-  login_provider: z.string().nullable().catch(null),
-  last_activity: z.coerce.number().catch(0),
+const SessionInfoDTOSchema = v.object({
+  session_id: v.fallback(v.string(), ""),
+  login_provider: v.fallback(v.nullable(v.string()), null),
+  last_activity: v.fallback(coerceNumber, 0),
 });
 
-const ProfileLinksDTOSchema = z.object({
-  avatar: z.string().catch(""),
-  browser_login: z.string().catch(""),
+const ProfileLinksDTOSchema = v.object({
+  avatar: v.fallback(v.string(), ""),
+  browser_login: v.fallback(v.string(), ""),
 });
 
 /** `GET /api/v5/me/profile.php` */
-export const AuthProfileDTOSchema = z.object({
+export const AuthProfileDTOSchema = v.object({
   user: AuthUserDTOSchema,
   banner: BannerDTOSchema,
-  linked_providers: z.array(LinkedProviderDTOSchema).catch([]),
-  available_providers: z.array(ProviderDTOSchema).catch([]),
+  linked_providers: v.fallback(v.array(LinkedProviderDTOSchema), []),
+  available_providers: v.fallback(v.array(ProviderDTOSchema), []),
   session: SessionInfoDTOSchema,
   links: ProfileLinksDTOSchema,
 });
 
 /** `POST /api/v5/me/refresh.php` */
-export const AuthRefreshDTOSchema = z.object({
-  updated: z.coerce.boolean().catch(false),
-  verified: z.coerce.boolean().catch(false),
+export const AuthRefreshDTOSchema = v.object({
+  updated: v.fallback(coerceBoolean, false),
+  verified: v.fallback(coerceBoolean, false),
   user: AuthUserDTOSchema,
 });
 
@@ -133,54 +141,55 @@ export const AuthRefreshDTOSchema = z.object({
  * `POST /api/v5/auth/email/request.php` and `POST /api/v5/me/emails.php`
  * (add-email step 1): always answers generically `{ sent: true }`.
  */
-export const AuthEmailSentDTOSchema = z.object({
-  sent: z.coerce.boolean().catch(false),
+export const AuthEmailSentDTOSchema = v.object({
+  sent: v.fallback(coerceBoolean, false),
 });
 
 /** One entry of the account's Animu Connect email list. */
-export const AuthEmailDTOSchema = z.object({
-  id: z.coerce.number(),
-  email: z.string(),
-  source: z.string().catch("provider"),
-  provider: z.string().nullable().catch(null),
-  verified: z.coerce.boolean().catch(false),
-  removable: z.coerce.boolean().catch(false),
+export const AuthEmailDTOSchema = v.object({
+  id: coerceNumber,
+  email: v.string(),
+  source: v.fallback(v.string(), "provider"),
+  provider: v.fallback(v.nullable(v.string()), null),
+  verified: v.fallback(coerceBoolean, false),
+  removable: v.fallback(coerceBoolean, false),
 });
 
 /** `GET|POST|DELETE /api/v5/me/emails.php` and `POST /api/v5/me/emails/verify.php` */
-export const AuthEmailsDTOSchema = z.object({
-  emails: z.array(AuthEmailDTOSchema).catch([]),
+export const AuthEmailsDTOSchema = v.object({
+  emails: v.fallback(v.array(AuthEmailDTOSchema), []),
 });
 
 /** `POST`/`DELETE /api/v5/me/emails.php` (DELETE adds `removed`). */
-export const AuthEmailRemoveDTOSchema = AuthEmailsDTOSchema.extend({
-  removed: z.coerce.boolean().catch(false),
+export const AuthEmailRemoveDTOSchema = v.object({
+  ...AuthEmailsDTOSchema.entries,
+  removed: v.fallback(coerceBoolean, false),
 });
 
 /** `POST /api/v5/me/link.php` */
-export const AuthLinkDTOSchema = z.object({
-  action: z.string().catch("linked"),
-  provider: z.string(),
+export const AuthLinkDTOSchema = v.object({
+  action: v.fallback(v.string(), "linked"),
+  provider: v.string(),
   user: AuthUserDTOSchema,
-  linked_providers: z.array(LinkedProviderDTOSchema).catch([]),
+  linked_providers: v.fallback(v.array(LinkedProviderDTOSchema), []),
 });
 
 /** `POST /api/v5/me/unlink.php` */
-export const AuthUnlinkDTOSchema = z.object({
-  unlinked: z.coerce.boolean().catch(false),
-  provider: z.string(),
-  needs_setup: z.coerce.boolean().catch(false),
-  linked_providers: z.array(LinkedProviderDTOSchema).catch([]),
+export const AuthUnlinkDTOSchema = v.object({
+  unlinked: v.fallback(coerceBoolean, false),
+  provider: v.string(),
+  needs_setup: v.fallback(coerceBoolean, false),
+  linked_providers: v.fallback(v.array(LinkedProviderDTOSchema), []),
 });
 
 /** `POST` / `DELETE /api/v5/me/avatar.php` */
-export const AuthAvatarDTOSchema = z.object({
-  avatar_url: z.string().nullable().catch(null),
+export const AuthAvatarDTOSchema = v.object({
+  avatar_url: v.fallback(v.nullable(v.string()), null),
 });
 
 /** `DELETE /api/v5/me/account.php` */
-export const AuthDeleteDTOSchema = z.object({
-  deleted: z.coerce.boolean().catch(false),
+export const AuthDeleteDTOSchema = v.object({
+  deleted: v.fallback(coerceBoolean, false),
 });
 
 /**
@@ -188,37 +197,41 @@ export const AuthDeleteDTOSchema = z.object({
  * On failure the endpoint returns `{ error, message? }` at HTTP 200 — the
  * client inspects `error` before validating this schema.
  */
-export const LegacyMobileSessionDTOSchema = z.object({
-  user: z
-    .object({
-      username: z.string().catch(""),
-      id: z.coerce.string().catch(""),
-      avatar: z.string().catch(""),
-      mfa: z.coerce.boolean().catch(false),
-      avatar_url: z.string().catch(""),
-      nickname: z.string().catch(""),
-      avatar_decoration_data: z.unknown().optional(),
-    })
-    .nullable()
-    .catch(null),
-  PHPSESSID: z.string(),
-  action: z.string().catch("login"),
+export const LegacyMobileSessionDTOSchema = v.object({
+  user: v.fallback(
+    v.nullable(
+      v.object({
+        username: v.fallback(v.string(), ""),
+        id: v.fallback(coerceString, ""),
+        avatar: v.fallback(v.string(), ""),
+        mfa: v.fallback(coerceBoolean, false),
+        avatar_url: v.fallback(v.string(), ""),
+        nickname: v.fallback(v.string(), ""),
+        avatar_decoration_data: v.optional(v.unknown()),
+      }),
+    ),
+    null,
+  ),
+  PHPSESSID: v.string(),
+  action: v.fallback(v.string(), "login"),
 });
 
-export type AuthUserDTO = z.infer<typeof AuthUserDTOSchema>;
-export type ProviderDTO = z.infer<typeof ProviderDTOSchema>;
-export type AuthSessionDTO = z.infer<typeof AuthSessionDTOSchema>;
-export type AuthSessionStatusDTO = z.infer<typeof AuthSessionStatusDTOSchema>;
-export type LinkedProviderDTO = z.infer<typeof LinkedProviderDTOSchema>;
-export type AuthProfileDTO = z.infer<typeof AuthProfileDTOSchema>;
-export type AuthRefreshDTO = z.infer<typeof AuthRefreshDTOSchema>;
-export type AuthEmailSentDTO = z.infer<typeof AuthEmailSentDTOSchema>;
-export type AuthEmailDTO = z.infer<typeof AuthEmailDTOSchema>;
-export type AuthEmailsDTO = z.infer<typeof AuthEmailsDTOSchema>;
-export type AuthEmailRemoveDTO = z.infer<typeof AuthEmailRemoveDTOSchema>;
-export type AuthLinkDTO = z.infer<typeof AuthLinkDTOSchema>;
-export type AuthUnlinkDTO = z.infer<typeof AuthUnlinkDTOSchema>;
-export type AuthAvatarDTO = z.infer<typeof AuthAvatarDTOSchema>;
-export type LegacyMobileSessionDTO = z.infer<
+export type AuthUserDTO = v.InferOutput<typeof AuthUserDTOSchema>;
+export type ProviderDTO = v.InferOutput<typeof ProviderDTOSchema>;
+export type AuthSessionDTO = v.InferOutput<typeof AuthSessionDTOSchema>;
+export type AuthSessionStatusDTO = v.InferOutput<
+  typeof AuthSessionStatusDTOSchema
+>;
+export type LinkedProviderDTO = v.InferOutput<typeof LinkedProviderDTOSchema>;
+export type AuthProfileDTO = v.InferOutput<typeof AuthProfileDTOSchema>;
+export type AuthRefreshDTO = v.InferOutput<typeof AuthRefreshDTOSchema>;
+export type AuthEmailSentDTO = v.InferOutput<typeof AuthEmailSentDTOSchema>;
+export type AuthEmailDTO = v.InferOutput<typeof AuthEmailDTOSchema>;
+export type AuthEmailsDTO = v.InferOutput<typeof AuthEmailsDTOSchema>;
+export type AuthEmailRemoveDTO = v.InferOutput<typeof AuthEmailRemoveDTOSchema>;
+export type AuthLinkDTO = v.InferOutput<typeof AuthLinkDTOSchema>;
+export type AuthUnlinkDTO = v.InferOutput<typeof AuthUnlinkDTOSchema>;
+export type AuthAvatarDTO = v.InferOutput<typeof AuthAvatarDTOSchema>;
+export type LegacyMobileSessionDTO = v.InferOutput<
   typeof LegacyMobileSessionDTOSchema
 >;

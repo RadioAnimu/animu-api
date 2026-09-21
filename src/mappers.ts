@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { ValidationError, type RequestResult } from "./errors.js";
 import {
   MusicRequestResponseDTOSchema,
@@ -324,13 +325,13 @@ export function historyFromDTO(
   artworkQuality: ArtworkQuality,
   defaultCover: string,
 ): Track[] {
-  const parsed = TrackHistorySchema.safeParse(dto);
+  const parsed = v.safeParse(TrackHistorySchema, dto);
   if (!parsed.success) return [];
 
   const isRequests = type === "requests";
   const tracks: Track[] = [];
 
-  for (const item of parsed.data) {
+  for (const item of parsed.output) {
     const [title] = item;
     if (!title) continue;
 
@@ -506,7 +507,7 @@ export function paginationFromDTO(
   quality: ArtworkQuality,
   defaultCover: string,
 ): MusicRequestPagination {
-  const parsed = MusicRequestResponseDTOSchema.parse(dto);
+  const parsed = v.parse(MusicRequestResponseDTOSchema, dto);
   return {
     results: parsed.objects.map((o) =>
       musicRequestFromDTO(o, quality, defaultCover),
@@ -596,7 +597,7 @@ export function parseSubmissionResponse(response: string): RequestResult {
 export function userFromExchangePayload(payload: unknown): User {
   const data = payload as { user?: unknown; PHPSESSID?: string };
   const dto = { ...(data.user as object), PHPSESSID: data.PHPSESSID };
-  return userFromDTO(UserDTOSchema.parse(dto));
+  return userFromDTO(v.parse(UserDTOSchema, dto));
 }
 
 /** Maps a validated user DTO (snake_case API fields) to a {@link User}. */

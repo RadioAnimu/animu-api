@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { describe, expect, it, vi } from "vitest";
 import { AnimuApi } from "../src/animu-api";
 import type { FetchLike } from "../src/http";
@@ -95,7 +96,7 @@ describe("SSEDecoder", () => {
 
 describe("live mappers", () => {
   it("maps a song_change DTO to a LiveNowPlaying", () => {
-    const dto = LiveSongChangeDTOSchema.parse(liveSongChangePayload);
+    const dto = v.parse(LiveSongChangeDTOSchema, liveSongChangePayload);
     const song = liveNowPlayingFromDTO(dto, "medium", "fallback.png");
 
     expect(song.serverName).toBe(
@@ -111,18 +112,18 @@ describe("live mappers", () => {
   });
 
   it("maps a listeners DTO", () => {
-    const dto = LiveListenersDTOSchema.parse(liveListenersPayload);
+    const dto = v.parse(LiveListenersDTOSchema, liveListenersPayload);
     expect(liveListenersFromDTO(dto)).toEqual({ value: 25 });
   });
 
   it("degrades an unresolved duration ('notime') to 0", () => {
-    const dto = LiveSongChangeDTOSchema.parse(liveSongChangeNoTimePayload);
+    const dto = v.parse(LiveSongChangeDTOSchema, liveSongChangeNoTimePayload);
     const song = liveNowPlayingFromDTO(dto, "medium", "fallback.png");
     expect(song.track?.duration).toBe(0);
   });
 
   it("maps the offline station payload", () => {
-    const dto = LiveSongChangeDTOSchema.parse(liveSongChangeOfflinePayload);
+    const dto = v.parse(LiveSongChangeDTOSchema, liveSongChangeOfflinePayload);
     const song = liveNowPlayingFromDTO(dto, "medium", "fallback.png");
 
     expect(song.status).toBe("offline");
@@ -135,7 +136,7 @@ describe("live mappers", () => {
   });
 
   it("maps a live payload without offline fields to null", () => {
-    const dto = LiveSongChangeDTOSchema.parse(liveSongChangePayload);
+    const dto = v.parse(LiveSongChangeDTOSchema, liveSongChangePayload);
     const song = liveNowPlayingFromDTO(dto, "medium", "fallback.png");
     expect(song.offlineSince).toBeNull();
     expect(song.message).toBeNull();

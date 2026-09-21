@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { DEFAULT_USER_AGENT, ENDPOINTS } from "./endpoints.js";
 import { clientHeaders, resolveUserAgent } from "./client-info.js";
 import { AnimuApiError } from "./errors.js";
@@ -591,7 +592,7 @@ export class AnimuAuth {
     }
 
     const session = legacyMobileSessionFromDTO(
-      LegacyMobileSessionDTOSchema.parse(payload),
+      v.parse(LegacyMobileSessionDTOSchema, payload),
     );
     this.sessions.set(session.sessionToken);
     return session;

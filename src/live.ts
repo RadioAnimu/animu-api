@@ -1,3 +1,4 @@
+import * as v from "valibot";
 import { DEFAULT_COVER, DEFAULT_USER_AGENT, ENDPOINTS } from "./endpoints.js";
 import { clientHeaders, resolveUserAgent } from "./client-info.js";
 import { AnimuApiError } from "./errors.js";
@@ -601,7 +602,7 @@ export class AnimuLive {
     if (message.event === "song_change" || message.event === "message") {
       let dto;
       try {
-        dto = LiveSongChangeDTOSchema.parse(JSON.parse(message.data));
+        dto = v.parse(LiveSongChangeDTOSchema, JSON.parse(message.data));
       } catch (error) {
         this.emitError(toLiveError(error, this.url));
         return;
@@ -632,7 +633,7 @@ export class AnimuLive {
     if (message.event === "listeners") {
       let dto;
       try {
-        dto = LiveListenersDTOSchema.parse(JSON.parse(message.data));
+        dto = v.parse(LiveListenersDTOSchema, JSON.parse(message.data));
       } catch (error) {
         this.emitError(toLiveError(error, this.url));
         return;
