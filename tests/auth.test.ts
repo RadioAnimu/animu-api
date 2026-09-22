@@ -64,8 +64,11 @@ function auth(fn: FetchLike, sessionToken?: string): AnimuAuth {
 const userPayload = {
   id: 1,
   username: "Nova",
+  handle: "nova_",
   email: "nova@example.com",
-  avatar_url: "https://cdn.discordapp.com/avatars/1/hash.png",
+  avatar_url: "api/v5/me/avatar.php",
+  avatar_custom: false,
+  verified: true,
   created_at: "2026-09-11 18:00:00",
 };
 
@@ -103,7 +106,10 @@ describe("exchangeToken", () => {
     expect(body).toContain("code_verifier=verifier");
     expect(session.action).toBe("registered");
     expect(session.user.username).toBe("Nova");
+    expect(session.user.handle).toBe("nova_");
     expect(session.user.avatarCustom).toBe(false);
+    expect(session.user.verified).toBe(true);
+    expect(session.user.avatarUrl).toBe(`${BASE}/api/v5/me/avatar.php`);
     expect(client.sessionToken).toBe("php-sess-1");
   });
 
@@ -189,7 +195,7 @@ describe("requestEmailLoginCode / verifyEmailLoginCode", () => {
 
   it("verifies the code, maps the session and stores the token", async () => {
     const { fn, calls } = mockFetch([
-      { match: (u) => u.endsWith("/api/v5/auth/email/verify.php"), reply: () => jsonResponse({ ok: true, data: { session_token: "email-sess", action: "login", user: { ...userPayload, email: "meu@email.com", avatar_url: "api/v5/me/avatar.php", verified: true } } }) },
+      { match: (u) => u.endsWith("/api/v5/auth/email/verify.php"), reply: () => jsonResponse({ ok: true, data: { session_token: "email-sess", action: "login", user: { ...userPayload, email: "meu@email.com" } } }) },
     ]);
     const client = auth(fn);
 
@@ -199,6 +205,7 @@ describe("requestEmailLoginCode / verifyEmailLoginCode", () => {
     expect(body).toContain("email=meu%40email.com");
     expect(body).toContain("code=1234");
     expect(session.user.email).toBe("meu@email.com");
+    expect(session.user.handle).toBe("nova_");
     expect(session.user.verified).toBe(true);
     expect(session.user.avatarUrl).toBe(`${BASE}/api/v5/me/avatar.php`);
     expect(client.sessionToken).toBe("email-sess");
