@@ -22,10 +22,11 @@ export interface ProviderInfo {
 /**
  * The authenticated user, as returned by the Auth API.
  *
- * Not every endpoint fills every field: login responses omit `handle` and
- * `avatarCustom`, while profile/link responses include them. Fields are
- * normalized to `null`/`false` rather than left undefined, so consumers can
- * treat the shape as stable.
+ * Login responses are refreshed server-side before they return, so
+ * `exchangeToken` / `verifyEmailLoginCode` fill every field (including
+ * `handle`, `avatarCustom` and `verified`). Some other endpoints project a
+ * smaller subset; missing fields are normalized to `null`/`false` rather than
+ * left undefined, so consumers can treat the shape as stable.
  */
 export interface AuthUser {
   id: number;
@@ -49,7 +50,14 @@ export interface AuthUser {
   createdAt: string | null;
 }
 
-/** Result of a successful login (`exchangeToken` / `verifyEmailLoginCode`). */
+/**
+ * Result of a successful login (`exchangeToken` / `verifyEmailLoginCode`).
+ *
+ * The server finishes every login with a best-effort re-fetch of all linked
+ * providers (the same path `refreshProfile` uses), so `user` already carries
+ * fresh name/handle/avatar/`verified` — no follow-up `refreshProfile` needed.
+ * A provider outage never fails the login.
+ */
 export interface AuthSession {
   /** `PHPSESSID` value; stored on the client and sent as `X-Session-Id`. */
   sessionToken: string;
@@ -115,6 +123,7 @@ export interface AuthRefreshResult {
   updated: boolean;
   /** Discord-linked + 2FA, recomputed by the server. */
   verified: boolean;
+  /** Server-side cached media (avatar/banner) is preserved on a provider/CDN hiccup. */
   user: AuthUser;
 }
 

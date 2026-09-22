@@ -299,7 +299,7 @@ Server failures throw `AnimuApiError` with `.statusCode` and `.code`; network/ti
 | 404 | `unknown_provider` / `no_avatar` / `no_banner` | — |
 | 404 | `not_found` | `emails.php` DELETE: no removable (extra) email with that id |
 | 409 | `email_taken` | Email already belongs to another account (or yours, as a provider email) |
-| 409 | `refresh_failed` | Could not refresh from the provider |
+| 409 | `refresh_failed` | The refresh itself could not run (a single provider outage is reported in `updated`, not thrown) |
 | 409 | `link_conflict` | Provider identity already belongs to another profile |
 | 409 | `last_provider` | Unlinking would leave no social **provider** (the Animu Connect email is a login method, not a provider) |
 | 422 | `avatar_nsfw` | Safety filter |
@@ -353,6 +353,11 @@ await auth.exchangeToken({
 });
 ```
 
+The server finishes the login by re-fetching every linked provider (the same
+path `refreshProfile` takes), so `user` already carries fresh
+name/handle/avatar/`verified` — no follow-up `refreshProfile()` call is needed.
+The refresh is best-effort: a provider outage never fails the login.
+
 ### `requestEmailLoginCode(email)` — `POST /api/v5/auth/email/request.php` → `{ sent: true }`
 
 Animu Connect: emails a single-use 4-digit login code (TTL 600 s, 5 attempts,
@@ -365,7 +370,8 @@ no extra setup.
 
 Verifies the code and starts a session (same response as `exchangeToken`).
 Errors: `400 invalid_request` (malformed email), `401 email_code_failed`
-(wrong/expired code or too many attempts).
+(wrong/expired code or too many attempts). Like `exchangeToken`, the server
+refreshes all linked providers before returning, so `user` is already fresh.
 
 ### `getSessionStatus(sessionId?)` — `GET /api/v5/auth/session-status.php` → `{ authenticated, sessionToken }`
 
@@ -379,6 +385,12 @@ Errors: `400 invalid_request` (malformed email), `401 email_code_failed`
 
 Re-fetches every linked provider and re-evaluates `verified`; also reconciles
 missing provider-email Animu Connect rows.
+
+Cached media is preserved on a transient provider/CDN failure: avatar/banner
+bytes are only replaced when the provider actually returns new media, while the
+accent colour is refreshed even when the provider omits the banner. Discord-owned
+media is re-cached even when Google/Apple owns the current identity source, and
+one provider being down is reported per-provider without failing the refresh.
 
 ### `getEmails(sessionId?)` — `GET /api/v5/me/emails.php` → `{ emails: AuthAccountEmail[] }`
 

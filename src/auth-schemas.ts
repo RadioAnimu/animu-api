@@ -45,10 +45,10 @@ export const ApiErrorEnvelopeDTOSchema = v.object({
 });
 
 /**
- * User projection shared by every v5 endpoint. Shapes differ slightly
- * between endpoints (login omits `handle`/`avatar_custom`; refresh drops
- * `verified`/`handle` from `user`), so missing fields degrade to
- * `null`/`false` instead of failing validation.
+ * User projection shared by every v5 endpoint. Login responses are refreshed
+ * server-side and fill every field; some endpoints still project a smaller
+ * subset (e.g. refresh drops `verified`/`handle` from `user`), so missing
+ * fields degrade to `null`/`false` instead of failing validation.
  */
 export const AuthUserDTOSchema = v.object({
   id: coerceNumber,

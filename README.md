@@ -171,13 +171,13 @@ notably `inboxSize` (replay buffer for late subscribers, default 128) and
 | Method | Purpose |
 | --- | --- |
 | `getProviders()` | Configured login providers |
-| `exchangeToken(params)` | OAuth code → session (primary mobile login) |
+| `exchangeToken(params)` | OAuth code → session (primary mobile login; server refreshes linked providers first) |
 | `requestEmailLoginCode(email)` | Animu Connect: email the 4-digit code |
-| `verifyEmailLoginCode({ email, code })` | Verify the code → session |
+| `verifyEmailLoginCode({ email, code })` | Verify the code → session (server refreshes linked providers first) |
 | `getSessionStatus(sessionId?)` | Is the token authenticated? |
 | `logout(sessionId?)` | Destroy the session |
 | `getProfile(sessionId?)` | Full profile, providers, banner, session |
-| `refreshProfile(sessionId?)` | Re-pull provider data + `verified` |
+| `refreshProfile(sessionId?)` | Re-pull provider data + `verified` (cached media survives hiccups) |
 | `getEmails(sessionId?)` | List the account's Animu Connect emails |
 | `requestAddEmail(email, sessionId?)` | Email code to add/replace the extra email |
 | `verifyAddEmail(params, sessionId?)` | Verify + store the extra email |

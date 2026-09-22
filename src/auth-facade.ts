@@ -189,6 +189,11 @@ export class AnimuAuth {
    * touches this library. Each provider's required credentials are validated
    * pre-flight by its adapter ({@link providerAdapterFor}).
    *
+   * The server finishes the login by re-fetching every linked provider (the same
+   * path as {@link refreshProfile}), so the returned {@link AuthSession.user} is
+   * already up to date — including `handle`, `avatarCustom` and `verified`. A
+   * provider outage never fails the login.
+   *
    * **Native Google Sign-In**: send `provider: "google"` with the platform
    * SDK's `serverAuthCode` as `code` and no `redirectUri`/`codeVerifier`. The
    * server redeems it with the web OAuth client (the native SDK's
@@ -238,6 +243,9 @@ export class AnimuAuth {
    *
    * Codes are single-use, expire after 600 s, are refused after 5 wrong
    * attempts, and resend waits 60 s (`EMAIL_CODE_*`).
+   *
+   * Like {@link exchangeToken}, the server refreshes all linked providers before
+   * returning, so the session's `user` is already fresh.
    *
    * @throws {AnimuApiError} `401 email_code_failed` (wrong/expired code or
    * too many attempts).
@@ -313,6 +321,12 @@ export class AnimuAuth {
    * updates the profile + the `verified` flag. Also reconciles the account's
    * Animu Connect email rows: provider emails missing from the list are
    * (re-)registered.
+   *
+   * Cached media survives hiccups: avatar/banner bytes are only replaced when
+   * the provider actually returns new media, and the accent colour is refreshed
+   * even when the provider omits the banner. Discord-owned media is re-cached
+   * even when Google/Apple owns the current identity source, and one provider
+   * being down does not fail the whole refresh.
    *
    * @throws {AnimuApiError} `409 refresh_failed`.
    */
