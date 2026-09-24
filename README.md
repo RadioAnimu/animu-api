@@ -2,7 +2,7 @@
 
 TypeScript client for the [Animu](https://www.animu.moe) radio API.
 
-- Zero runtime dependencies. `fetch` + `zod` (peer).
+- Zero runtime dependencies. `fetch` + `valibot` (bundled).
 - Every response validated at the boundary; malformed payloads degrade instead of throwing.
 - Timeouts, GET micro-cache, uniform errors.
 - ESM + CJS, tree-shakeable, fully typed.
@@ -12,7 +12,7 @@ Works on Node ≥ 18, browsers, Deno, Bun and React Native.
 ## Install
 
 ```bash
-npm install animu-api zod
+npm install animu-api
 ```
 
 ## Usage

@@ -47,7 +47,7 @@ import type {
  * Covers now-playing metadata, programs, track history, music requests,
  * live shout-outs, audio streams and Discord-based authentication.
  *
- * Every response is validated at the boundary (zod schemas) and mapped to
+ * Every response is validated at the boundary (valibot schemas) and mapped to
  * domain types. Transport features: per-request timeouts, a short-lived GET
  * micro-cache and uniform {@link AnimuApiError} error wrapping.
  *

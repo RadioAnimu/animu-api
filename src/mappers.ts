@@ -592,7 +592,7 @@ export function parseSubmissionResponse(response: string): RequestResult {
  * user object before schema validation.
  *
  * @param payload - Raw exchange response, already JSON-parsed.
- * @throws A zod error when the payload is malformed.
+ * @throws A valibot error when the payload is malformed.
  */
 export function userFromExchangePayload(payload: unknown): User {
   const data = payload as { user?: unknown; PHPSESSID?: string };
