@@ -95,6 +95,9 @@ export type RequestErrorCode =
  * Maps a submission error code to a human-readable English message.
  * Display whatever suits your project — this is a convenience, not i18n.
  *
+ * The server sends raw spellings (`erro: "STRIKE AND OUT"`); known blocks
+ * are matched case-insensitively, in both the spaced and underscore forms.
+ *
  * @param error - Code from a failed {@link RequestResult}, if any.
  * @param detail - Server-provided detail (e.g. unblock datetime for PEDIBLOCK).
  * @returns A user-presentable English sentence.
@@ -103,7 +106,7 @@ export function requestResultMessage(
   error?: string,
   detail?: string,
 ): string {
-  switch (error) {
+  switch (error?.toUpperCase()) {
     case "PEDIBLOCK":
       return detail
         ? `This track was already requested. Available again after ${new Date(detail + "Z").toLocaleTimeString()}`
@@ -114,6 +117,7 @@ export function requestResultMessage(
       return `Too many songs from "${detail}" in the last 90 minutes.`;
     case "HARUBLOCK":
       return "This track was played too recently by the AutoDJ.";
+    case "STRIKE AND OUT":
     case "STRIKE_AND_OUT":
       return "You've reached the request limit.";
     case "ONAIR":
