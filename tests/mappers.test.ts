@@ -196,6 +196,22 @@ describe("trackFromMetadata", () => {
     expect(trackFromMetadata(dto, "medium", DEFAULT_COVER)?.isRequest).toBe(true);
   });
 
+  it("flags the 'Música pedida por …' suffix as a request", () => {
+    const dto = v.parse(StreamMetadataDTOSchema, {
+      ...metadataPayload,
+      rawtitle: "LiSA - crossing field | Sword Art Online [Música pedida por ness.js]",
+    });
+    expect(trackFromMetadata(dto, "medium", DEFAULT_COVER)?.isRequest).toBe(true);
+  });
+
+  it("does not flag plain titles as requests", () => {
+    const dto = v.parse(StreamMetadataDTOSchema, {
+      ...metadataPayload,
+      rawtitle: "LiSA - crossing field | Sword Art Online",
+    });
+    expect(trackFromMetadata(dto, "medium", DEFAULT_COVER)?.isRequest).toBe(false);
+  });
+
   it("prefers the server-resolved track artist/title over the rawtitle parse", () => {
     const dto = v.parse(StreamMetadataDTOSchema, {
       ...metadataPayload,

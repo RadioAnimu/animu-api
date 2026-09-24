@@ -38,7 +38,7 @@ Mapping rules:
 - `parseNowPlayingTitle(rawtitle)` splits `"Artist - Title | Anime"` → `Track.{title,artist,anime}`. Server-resolved `track.artist`/`track.title` win when present; the `rawtitle` parse is the fallback.
 - If the server title still embeds `" | "` (its `titleBreaker` only splits on `" - "`), the `rawtitle` parse wins so the anime suffix is not swallowed into the title.
 - `Track.id` = `track.playlist.track_id` (`"0"` when absent); `Track.playlistName` = `track.playlist.title` (`""` when absent).
-- `isRequest` = `rawtitle` contains `pedido` (case-insensitive).
+- `isRequest` = `rawtitle` carries the request marker: the legacy `"Pedido: …"` prefix or the current `"[Música pedida por …]"` suffix (matched as `pedid` + `o`/`a`, case-insensitive).
 - Listener aliases tried in order: `listeners` → `currentListeners` → `active_listeners` → `total`; invalid values clamp to `0`.
 - `track` is `null` when the payload omits it.
 - `startTime` = `new Date(timestart)`, falls back to `Date.now()` on `0`.

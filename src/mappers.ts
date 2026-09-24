@@ -178,7 +178,9 @@ export function selectArtwork(
  * Maps a validated now-playing metadata payload to a {@link Track}.
  *
  * The raw title is parsed into title/artist/anime; the track is flagged as a
- * request when the raw title contains "pedido". A zero `timestart` falls
+ * request when the raw title carries the station's request marker — the
+ * legacy "Pedido: …" prefix or the current "[Música pedida por …]" suffix
+ * (both pedido/pedida share the "pedid" stem). A zero `timestart` falls
  * back to the current time.
  *
  * @param dto - Validated metadata DTO (see `StreamMetadataDTOSchema`).
@@ -217,7 +219,7 @@ export function trackFromMetadata(
     artwork,
     duration: dto.track.duration,
     startTime: new Date(dto.track.timestart || Date.now()),
-    isRequest: raw.toLowerCase().includes("pedido"),
+    isRequest: /\bpedid[oa]/i.test(raw),
     playlistName: dto.track.playlist?.title ?? "",
   };
 }
