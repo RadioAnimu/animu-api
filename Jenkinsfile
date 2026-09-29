@@ -1,8 +1,8 @@
 // CI/CD for animu-api — the TypeScript API client consumed by the mobile app
 // (and anyone else).
 //
-// Runs on Node 22, builds ESM + CJS, and archives the built `dist/` as
-// `animu-api-dist.tar.gz` so downstream jobs (e.g. animu-mobile-app-release)
+// Runs on Node 22 with pnpm, builds ESM + CJS, and archives the built `dist/`
+// as `animu-api-dist.tar.gz` so downstream jobs (e.g. animu-mobile-app-release)
 // can consume the exact built artifact for a given commit instead of building
 // the library from source.
 //
@@ -26,32 +26,36 @@ pipeline {
 
   environment {
     CI = 'true'
-    NPM_CONFIG_FUND = 'false'
-    NPM_CONFIG_AUDIT = 'false'
+    // Never prompt when corepack fetches the pinned pnpm.
+    COREPACK_ENABLE_DOWNLOAD_PROMPT = '0'
   }
 
   stages {
     stage('Install') {
       steps {
-        sh 'npm install --no-audit --no-fund'
+        sh '''
+          set -eux
+          corepack enable
+          pnpm install --frozen-lockfile
+        '''
       }
     }
 
     stage('Typecheck') {
       steps {
-        sh 'npm run typecheck'
+        sh 'pnpm run typecheck'
       }
     }
 
     stage('Test') {
       steps {
-        sh 'npm test'
+        sh 'pnpm test'
       }
     }
 
     stage('Build (ESM + CJS)') {
       steps {
-        sh 'npm run build'
+        sh 'pnpm run build'
       }
     }
   }
