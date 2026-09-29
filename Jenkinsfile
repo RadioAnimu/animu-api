@@ -59,8 +59,16 @@ pipeline {
   }
   post {
     success {
-      // Needs a node: with `agent none` a bare sh has no executor.
-      node('built-in') {
+      // Needs a node: with `agent none` a bare sh has no executor. Use the same
+      // root docker agent as the build, because the workspace files it produced
+      // are root-owned and the built-in node user cannot write them.
+      agent {
+        docker {
+          image 'node:22-bookworm'
+          args '-u root'
+        }
+      }
+      steps {
         sh '''
           set -eux
           test -f dist/esm/index.js
@@ -68,8 +76,8 @@ pipeline {
           tar -czf animu-api-dist.tar.gz dist
           ls -la animu-api-dist.tar.gz
         '''
-        archiveArtifacts artifacts: 'animu-api-dist.tar.gz', fingerprint: true
       }
+      archiveArtifacts artifacts: 'animu-api-dist.tar.gz', fingerprint: true
     }
     failure { echo 'animu-api build failed.' }
   }
