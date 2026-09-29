@@ -29,6 +29,8 @@ pipeline {
     timeout(time: 15, unit: 'MINUTES')
     disableConcurrentBuilds()
     buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '50'))
+    // Share the lock with the mobile jobs (same physical host).
+    lock('animu-build-host')
   }
 
   environment {
