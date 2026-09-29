@@ -12,7 +12,8 @@ Works on Node ≥ 18, browsers, Deno, Bun and React Native.
 ## Install
 
 ```bash
-npm install animu-api
+pnpm add animu-api
+# or: npm install animu-api
 ```
 
 ## Usage
@@ -201,10 +202,10 @@ Full endpoint reference with request/response schemas and business rules: [API.m
 ## Development
 
 ```bash
-npm install
-npm run typecheck
-npm test
-npm run build
+pnpm install
+pnpm run typecheck
+pnpm test
+pnpm run build
 ```
 
 ## License
