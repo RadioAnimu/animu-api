@@ -36,7 +36,9 @@ pipeline {
   }
 
   stages {
-    stage('Install') {
+    // One stage, one container: with agent none each stage would otherwise get
+    // a fresh container and lose corepack/node_modules state between stages.
+    stage('Build') {
       agent {
         docker {
           image 'node:22-bookworm'
@@ -48,47 +50,13 @@ pipeline {
           set -eux
           corepack enable
           pnpm install --frozen-lockfile
+          pnpm run typecheck
+          pnpm test
+          pnpm run build
         '''
       }
     }
-
-    stage('Typecheck') {
-      agent {
-        docker {
-          image 'node:22-bookworm'
-          args '-u root'
-        }
-      }
-      steps {
-        sh 'pnpm run typecheck'
-      }
-    }
-
-    stage('Test') {
-      agent {
-        docker {
-          image 'node:22-bookworm'
-          args '-u root'
-        }
-      }
-      steps {
-        sh 'pnpm test'
-      }
-    }
-
-    stage('Build (ESM + CJS)') {
-      agent {
-        docker {
-          image 'node:22-bookworm'
-          args '-u root'
-        }
-      }
-      steps {
-        sh 'pnpm run build'
-      }
-    }
   }
-
   post {
     success {
       sh '''
