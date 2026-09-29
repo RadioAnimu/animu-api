@@ -59,14 +59,17 @@ pipeline {
   }
   post {
     success {
-      sh '''
-        set -eux
-        test -f dist/esm/index.js
-        test -f dist/cjs/index.cjs
-        tar -czf animu-api-dist.tar.gz dist
-        ls -la animu-api-dist.tar.gz
-      '''
-      archiveArtifacts artifacts: 'animu-api-dist.tar.gz', fingerprint: true
+      // Needs a node: with `agent none` a bare sh has no executor.
+      node('built-in') {
+        sh '''
+          set -eux
+          test -f dist/esm/index.js
+          test -f dist/cjs/index.cjs
+          tar -czf animu-api-dist.tar.gz dist
+          ls -la animu-api-dist.tar.gz
+        '''
+        archiveArtifacts artifacts: 'animu-api-dist.tar.gz', fingerprint: true
+      }
     }
     failure { echo 'animu-api build failed.' }
   }
