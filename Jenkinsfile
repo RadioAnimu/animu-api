@@ -10,12 +10,8 @@
 // scripts/fetch-animu-api-dist.mjs — keep it stable.
 
 pipeline {
-  agent {
-    docker {
-      image 'node:22-bookworm'
-      args '-u root'
-    }
-  }
+  // agent none so the shared lock is taken before an executor is allocated.
+  agent none
 
   // A parameter (even a free-text one) makes Jenkins expose this job via
   // "Build with Parameters" so it gets a parameterized play button like the
@@ -41,6 +37,12 @@ pipeline {
 
   stages {
     stage('Install') {
+      agent {
+        docker {
+          image 'node:22-bookworm'
+          args '-u root'
+        }
+      }
       steps {
         sh '''
           set -eux
@@ -51,18 +53,36 @@ pipeline {
     }
 
     stage('Typecheck') {
+      agent {
+        docker {
+          image 'node:22-bookworm'
+          args '-u root'
+        }
+      }
       steps {
         sh 'pnpm run typecheck'
       }
     }
 
     stage('Test') {
+      agent {
+        docker {
+          image 'node:22-bookworm'
+          args '-u root'
+        }
+      }
       steps {
         sh 'pnpm test'
       }
     }
 
     stage('Build (ESM + CJS)') {
+      agent {
+        docker {
+          image 'node:22-bookworm'
+          args '-u root'
+        }
+      }
       steps {
         sh 'pnpm run build'
       }
