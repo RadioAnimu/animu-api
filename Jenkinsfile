@@ -38,6 +38,11 @@ pipeline {
   stages {
     // One stage, one container: with agent none each stage would otherwise get
     // a fresh container and lose corepack/node_modules state between stages.
+    //
+    // The dist is archived here rather than in `post`: with `agent none` the
+    // post section has no node context (archiveArtifacts would fail), and the
+    // files this stage produces are root-owned so a plain post `sh` on the
+    // built-in node could not read them either.
     stage('Build') {
       agent {
         docker {
@@ -54,27 +59,18 @@ pipeline {
           pnpm test
           pnpm run build
         '''
+        sh '''
+          set -eux
+          test -f dist/esm/index.js
+          test -f dist/cjs/index.cjs
+          tar -czf animu-api-dist.tar.gz dist
+          ls -la animu-api-dist.tar.gz
+        '''
+        archiveArtifacts artifacts: 'animu-api-dist.tar.gz', fingerprint: true
       }
     }
   }
   post {
-    success {
-      // Needs a node: with `agent none` a bare sh has no executor. Run in the
-      // same root docker container as the build, because the workspace files it
-      // produced are root-owned and the built-in node user cannot write them.
-      script {
-        docker.image('node:22-bookworm').inside('-u root') {
-          sh '''
-            set -eux
-            test -f dist/esm/index.js
-            test -f dist/cjs/index.cjs
-            tar -czf animu-api-dist.tar.gz dist
-            ls -la animu-api-dist.tar.gz
-          '''
-        }
-      }
-      archiveArtifacts artifacts: 'animu-api-dist.tar.gz', fingerprint: true
-    }
     failure { echo 'animu-api build failed.' }
   }
 }
