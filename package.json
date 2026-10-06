@@ -43,7 +43,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepack": "pnpm run build"
+    "prepack": "pnpm run build",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "valibot": "^1.5.0"
@@ -51,7 +52,8 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "typescript": "^5.9.2",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "@vitest/coverage-v8": "^4.1.11"
   },
   "engines": {
     "node": ">=18"
