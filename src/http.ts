@@ -53,26 +53,24 @@ function errorFromResponse(
   method: string,
   url: string,
 ): AnimuApiError {
-  let message = `HTTP error ${status}`;
-  let code: string | undefined;
+  const fallback = `HTTP error ${status}`;
   try {
-    const parsed = JSON.parse(text) as unknown;
-    if (parsed && typeof parsed === "object") {
-      const error = (parsed as { error?: unknown }).error;
-      if (typeof error === "string" && error) {
-        message = error;
-      } else if (error && typeof error === "object") {
-        const envelope = error as { code?: unknown; message?: unknown };
-        if (typeof envelope.code === "string") code = envelope.code;
-        if (typeof envelope.message === "string" && envelope.message) {
-          message = envelope.message;
-        }
-      }
+    const parsed = JSON.parse(text) as { error?: unknown } | null;
+    const error = parsed?.error;
+    if (typeof error === "string" && error) {
+      return new AnimuApiError(error, status, { method, url });
+    }
+    if (error && typeof error === "object") {
+      const envelope = error as { code?: unknown; message?: unknown };
+      const code = typeof envelope.code === "string" ? envelope.code : undefined;
+      const message = typeof envelope.message === "string" && envelope.message
+        ? envelope.message : fallback;
+      return new AnimuApiError(message, status, { method, url }, code);
     }
   } catch {
     // Not JSON — keep the generic status message.
   }
-  return new AnimuApiError(message, status, { method, url }, code);
+  return new AnimuApiError(fallback, status, { method, url });
 }
 
 interface CacheEntry {
@@ -212,11 +210,10 @@ export class HttpClient {
         (!!error &&
           typeof error === "object" &&
           (error as { name?: unknown }).name === "AbortError");
+      const failureMessage = error instanceof Error ? error.message : "Unknown error";
       const message = isAbort
         ? `Request timed out after ${options?.timeout ?? this.defaultTimeout}ms`
-        : error instanceof Error
-          ? error.message
-          : "Unknown error";
+        : failureMessage;
       throw new AnimuApiError(message, 0, { method, url: fullUrl });
     } finally {
       clearTimeout(timeoutId);

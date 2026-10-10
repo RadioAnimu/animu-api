@@ -45,8 +45,8 @@ export class SSEDecoder {
   private buffer = "";
   private data = "";
   private eventType = "";
-  private lastId: string | undefined;
-  private retryValue: number | undefined;
+  private lastId: string | null = null;
+  private retryValue: number | null = null;
   /** Set when a chunk ended on a lone CR so a following LF is swallowed. */
   private skipLeadingLf = false;
 
@@ -66,26 +66,12 @@ export class SSEDecoder {
 
     while (i < this.buffer.length) {
       const code = this.buffer.charCodeAt(i);
-      let lineEnd = -1;
-      let advance = 0;
-
-      if (code === 10 /* \n */) {
-        lineEnd = i;
-        advance = 1;
-      } else if (code === 13 /* \r */) {
-        lineEnd = i;
-        if (i + 1 >= this.buffer.length) {
-          // CR at the buffer edge: treat it as a terminator now, and
-          // swallow a leading LF if it turns out to be a split CRLF.
-          this.skipLeadingLf = true;
-          advance = 1;
-        } else {
-          advance = this.buffer.charCodeAt(i + 1) === 10 ? 2 : 1;
-        }
-      } else {
+      if (code !== 10 && code !== 13) {
         i++;
         continue;
       }
+      const lineEnd = i;
+      const advance = this.lineAdvance(i, code);
 
       const message = this.processLine(this.buffer.slice(lineStart, lineEnd));
       if (message) messages.push(message);
@@ -102,29 +88,36 @@ export class SSEDecoder {
     this.buffer = "";
     this.data = "";
     this.eventType = "";
-    this.lastId = undefined;
-    this.retryValue = undefined;
+    this.lastId = null;
+    this.retryValue = null;
     this.skipLeadingLf = false;
   }
 
-  private processLine(line: string): SSEMessage | null {
-    if (line === "") {
-      if (this.data === "") {
-        this.eventType = "";
-        return null;
-      }
-      const message: SSEMessage = {
-        event: this.eventType || "message",
-        data: this.data.endsWith("\n")
-          ? this.data.slice(0, -1)
-          : this.data,
-      };
-      if (this.lastId !== undefined) message.id = this.lastId;
-      if (this.retryValue !== undefined) message.retry = this.retryValue;
-      this.data = "";
-      this.eventType = "";
-      return message;
+  private lineAdvance(index: number, code: number): number {
+    if (code === 10) return 1;
+    if (index + 1 >= this.buffer.length) {
+      this.skipLeadingLf = true;
+      return 1;
     }
+    return this.buffer.charCodeAt(index + 1) === 10 ? 2 : 1;
+  }
+
+  private finishMessage(): SSEMessage | null {
+    const event = this.eventType || "message";
+    this.eventType = "";
+    if (this.data === "") return null;
+    const message: SSEMessage = {
+      event,
+      data: this.data.endsWith("\n") ? this.data.slice(0, -1) : this.data,
+    };
+    if (this.lastId !== null) message.id = this.lastId;
+    if (this.retryValue !== null) message.retry = this.retryValue;
+    this.data = "";
+    return message;
+  }
+
+  private processLine(line: string): SSEMessage | null {
+    if (line === "") return this.finishMessage();
 
     if (line.startsWith(":")) return null; // comment / keep-alive
 
@@ -192,6 +185,26 @@ function toLiveError(error: unknown, url: string): AnimuApiError {
  * continuation bytes when a multi-byte sequence splits across chunks,
  * replaces invalid bytes with U+FFFD, and never throws.
  */
+function utf8Size(lead: number): number {
+  if (lead < 0xc2 || lead > 0xf4) return 0;
+  if (lead < 0xe0) return 2;
+  return lead < 0xf0 ? 3 : 4;
+}
+
+function utf8CodePoint(bytes: Uint8Array, index: number, size: number): number | null {
+  const masks = [0, 0x7f, 0x1f, 0x0f, 0x07];
+  const minimums = [0, 0, 0x80, 0x800, 0x10000];
+  let codePoint = bytes[index]! & masks[size]!;
+  for (let k = 1; k < size; k += 1) {
+    const byte = bytes[index + k]!;
+    if ((byte & 0xc0) !== 0x80) return null;
+    codePoint = (codePoint << 6) | (byte & 0x3f);
+  }
+  const surrogate = codePoint >= 0xd800 && codePoint <= 0xdfff;
+  if (codePoint < minimums[size]! || surrogate || codePoint > 0x10ffff) return null;
+  return codePoint;
+}
+
 class Utf8Decoder {
   /** Continuation bytes of a sequence split across the last chunk. */
   private carry: number[] = [];
@@ -201,68 +214,33 @@ class Utf8Decoder {
       bytes = Uint8Array.from([...this.carry, ...bytes]);
       this.carry = [];
     }
-
     let out = "";
     let i = 0;
-    const length = bytes.length;
-    while (i < length) {
+    while (i < bytes.length) {
       const lead = bytes[i]!;
       if (lead < 0x80) {
         out += String.fromCharCode(lead);
         i += 1;
         continue;
       }
-
-      const size =
-        lead >= 0xc2 && lead < 0xe0
-          ? 2
-          : lead >= 0xe0 && lead < 0xf0
-            ? 3
-            : lead >= 0xf0 && lead <= 0xf4
-              ? 4
-              : 0;
-      if (
-        size === 0 ||
-        i + size > length
-      ) {
-        if (size > 0) {
-          // Incomplete sequence at the end of this chunk — wait for the rest.
-          this.carry = [...bytes.slice(i)];
-        } else {
-          out += "\u{FFFD}";
-          i += 1;
-        }
+      const size = utf8Size(lead);
+      if (size === 0) {
+        // Preserve the existing invalid-leading-byte behavior: emit one
+        // replacement and stop this chunk.
+        return out + "\u{FFFD}";
+      }
+      if (i + size > bytes.length) {
+        this.carry = [...bytes.slice(i)];
         return out;
       }
-
-      let codePoint = lead & (size === 2 ? 0x1f : size === 3 ? 0x0f : 0x07);
-      let valid = true;
-      for (let k = 1; k < size; k += 1) {
-        const byte = bytes[i + k]!;
-        if ((byte & 0xc0) !== 0x80) {
-          valid = false;
-          break;
-        }
-        codePoint = (codePoint << 6) | (byte & 0x3f);
-      }
-
-      const minimum = size === 2 ? 0x80 : size === 3 ? 0x800 : 0x10000;
-      if (
-        !valid ||
-        codePoint < minimum ||
-        (codePoint >= 0xd800 && codePoint <= 0xdfff) ||
-        codePoint > 0x10ffff
-      ) {
+      const codePoint = utf8CodePoint(bytes, i, size);
+      if (codePoint === null) {
         out += "\u{FFFD}";
         i += 1;
-        continue;
+      } else {
+        out += String.fromCodePoint(codePoint);
+        i += size;
       }
-
-      out +=
-        codePoint > 0xffff
-          ? String.fromCodePoint(codePoint)
-          : String.fromCharCode(codePoint);
-      i += size;
     }
     return out;
   }
@@ -377,9 +355,10 @@ export class AnimuLive {
   subscribe(handlers: LiveHandlers = {}): LiveSubscription {
     const subscriber: Subscriber = {
       ...handlers,
-      id: this.nextSubscriberId++,
+      id: this.nextSubscriberId,
       closed: false,
     };
+    this.nextSubscriberId += 1;
     this.subscribers.add(subscriber);
     if (!this.running) this.start();
 
@@ -482,12 +461,13 @@ export class AnimuLive {
         const next = queue.shift();
         if (next) {
           yield next;
-          continue;
+        } else if (finished) {
+          break;
+        } else {
+          await new Promise<void>((resolve) => {
+            resolveNext = resolve;
+          });
         }
-        if (finished) break;
-        await new Promise<void>((resolve) => {
-          resolveNext = resolve;
-        });
       }
     } finally {
       signal?.removeEventListener("abort", onAbort);
@@ -511,65 +491,46 @@ export class AnimuLive {
     void this.run();
   }
 
+  private async connect(controller: AbortController): Promise<{ retryable: boolean; endedCleanly: boolean }> {
+    let retryable = true;
+    let endedCleanly = false;
+    try {
+      const response = await this.fetchImpl(this.url, {
+        method: "GET",
+        headers: { Accept: "text/event-stream", "User-Agent": this.userAgent, ...this.headers },
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        retryable = isRetryableStatus(response.status);
+        throw new AnimuApiError(`Live stream failed with HTTP ${response.status}`, response.status, { method: "GET", url: this.url });
+      }
+      if (!response.body) {
+        throw new AnimuApiError("Live stream response has no readable body", 0, { method: "GET", url: this.url });
+      }
+      this.attempts = 0;
+      this.emitOpen();
+      await this.consume(response.body, controller.signal);
+      endedCleanly = this.running && !controller.signal.aborted;
+    } catch (error) {
+      if (this.running && !controller.signal.aborted) this.emitError(toLiveError(error, this.url));
+    } finally {
+      if (this.controller === controller) this.controller = null;
+    }
+    return { retryable, endedCleanly };
+  }
+
   private async run(): Promise<void> {
     while (this.running) {
       const controller = new AbortController();
       this.controller = controller;
-      let retryable = true;
-      let endedCleanly = false;
-
-      try {
-        const response = await this.fetchImpl(this.url, {
-          method: "GET",
-          headers: {
-            Accept: "text/event-stream",
-            "User-Agent": this.userAgent,
-            ...this.headers,
-          },
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          retryable = isRetryableStatus(response.status);
-          throw new AnimuApiError(
-            `Live stream failed with HTTP ${response.status}`,
-            response.status,
-            { method: "GET", url: this.url },
-          );
-        }
-        if (!response.body) {
-          throw new AnimuApiError(
-            "Live stream response has no readable body",
-            0,
-            { method: "GET", url: this.url },
-          );
-        }
-
-        this.attempts = 0;
-        this.emitOpen();
-        await this.consume(response.body, controller.signal);
-        endedCleanly = this.running && !controller.signal.aborted;
-      } catch (error) {
-        if (!this.running || controller.signal.aborted) break;
-        this.emitError(toLiveError(error, this.url));
-      } finally {
-        if (this.controller === controller) this.controller = null;
+      const { retryable, endedCleanly } = await this.connect(controller);
+      if (this.running && endedCleanly) {
+        this.emitError(new AnimuApiError("Live stream ended", 0, { method: "GET", url: this.url }));
       }
-
-      if (!this.running) break;
-      if (endedCleanly) {
-        this.emitError(
-          new AnimuApiError("Live stream ended", 0, {
-            method: "GET",
-            url: this.url,
-          }),
-        );
-      }
-      if (!this.reconnect || !retryable) break;
+      const stopped = !this.running || controller.signal.aborted;
+      if (stopped || !this.reconnect || !retryable) break;
       await this.waitBackoff();
     }
-    // Terminal exit (reconnect disabled or non-retryable status): release the
-    // subscribers so late subscribers start a fresh connection.
     this.stop();
   }
 
@@ -661,6 +622,8 @@ export class AnimuLive {
       this.safe(() =>
         subscriber.onListeners?.(event.listeners, event.receivedAt),
       );
+    } else {
+      // Connection lifecycle events are delivered directly, not replayed.
     }
   }
 
@@ -701,6 +664,7 @@ export class AnimuLive {
     this.attempts += 1;
     const jitter =
       this.reconnectJitter > 0
+        // eslint-disable-next-line sonarjs/pseudo-random -- Retry jitter is scheduling, not security-sensitive randomness.
         ? base * this.reconnectJitter * (Math.random() - 0.5)
         : 0;
     return Math.max(0, Math.round(base + jitter));

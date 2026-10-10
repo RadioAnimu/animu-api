@@ -12,7 +12,10 @@ jobs:
       contents: read
       id-token: write # npm provenance
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v4
 
@@ -25,11 +28,8 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck + Test + Build
-        run: |
-          pnpm run typecheck
-          pnpm test
-          pnpm run build
+      - name: Quality gates and build
+        run: pnpm run check:ci
 
       - name: Publish
         run: pnpm publish --no-git-checks --provenance

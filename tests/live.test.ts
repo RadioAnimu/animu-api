@@ -81,6 +81,16 @@ describe("SSEDecoder", () => {
     ]);
   });
 
+  it("handles a CRLF split between chunks and clears IDs on reset", () => {
+    const decoder = new SSEDecoder();
+    expect(decoder.push("id: previous\r\nretry: 1000\r\ndata: first\r")).toEqual([]);
+    expect(decoder.push("\n\r")).toEqual([
+      { event: "message", data: "first", id: "previous", retry: 1000 },
+    ]);
+    decoder.reset();
+    expect(decoder.push("data: fresh\n\n")).toEqual([{ event: "message", data: "fresh" }]);
+  });
+
   it("captures id and retry fields", () => {
     const decoder = new SSEDecoder();
     expect(decoder.push("id: 42\nretry: 3000\ndata: x\n\n")).toEqual([
@@ -432,11 +442,9 @@ describe("AnimuLive", () => {
   it("decodes UTF-8 split across chunks via a duck-typed custom fetch", async () => {
     const frame = sseEvent("song_change", liveSongChangePayload); // album: "きくおミク3"
     const bytes = encoder.encode(frame);
-    // Cut inside a multi-byte character (a continuation byte: 10xxxxxx).
-    let cut = 1;
-    while ((bytes[cut]! & 0xc0) === 0x80) cut++;
-    while (cut > 0 && (bytes[cut]! & 0xc0) === 0x80) cut--;
-    cut++;
+    // Cut at the first continuation byte, inside a real multi-byte character.
+    const cut = bytes.findIndex((byte) => (byte & 0xc0) === 0x80);
+    expect(cut).toBeGreaterThan(0);
     const response = {
       ok: true,
       status: 200,

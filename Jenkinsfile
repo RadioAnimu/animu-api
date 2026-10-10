@@ -7,7 +7,7 @@
 // the library from source.
 //
 // Artifact name is depended on by animu-mobile-app's
-// scripts/fetch-animu-api-dist.mjs — keep it stable.
+// scripts/submodules.mjs — keep it stable.
 
 pipeline {
   // agent none so the shared lock is taken before an executor is allocated.
@@ -22,7 +22,7 @@ pipeline {
 
   options {
     timestamps()
-    timeout(time: 15, unit: 'MINUTES')
+    timeout(time: 30, unit: 'MINUTES')
     disableConcurrentBuilds()
     buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '50'))
     // Share the lock with the mobile jobs (same physical host).
@@ -43,7 +43,7 @@ pipeline {
     // post section has no node context (archiveArtifacts would fail), and the
     // files this stage produces are root-owned so a plain post `sh` on the
     // built-in node could not read them either.
-    stage('Build') {
+    stage('Quality and build') {
       agent {
         docker {
           image 'node:22-bookworm'
@@ -53,11 +53,11 @@ pipeline {
       steps {
         sh '''
           set -eux
+          git config --global --add safe.directory "$WORKSPACE"
+          rm -rf coverage junit.xml
           corepack enable
           pnpm install --frozen-lockfile
-          pnpm run typecheck
-          pnpm test
-          pnpm run build
+          pnpm run check:ci
         '''
         sh '''
           set -eux
@@ -67,6 +67,12 @@ pipeline {
           ls -la animu-api-dist.tar.gz
         '''
         archiveArtifacts artifacts: 'animu-api-dist.tar.gz', fingerprint: true
+      }
+      post {
+        always {
+          junit testResults: 'junit.xml', allowEmptyResults: false
+          archiveArtifacts artifacts: 'coverage/**', allowEmptyArchive: true
+        }
       }
     }
   }

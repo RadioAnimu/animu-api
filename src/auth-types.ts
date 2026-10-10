@@ -7,6 +7,7 @@ import type { ClientInfo } from "./types.js";
  * {@link AnimuAuth.getProviders} — new providers can be added without a
  * client release.
  */
+// eslint-disable-next-line sonarjs/redundant-type-aliases -- Documented public API name retained for consumers.
 export type AuthProviderName = string;
 
 /** What happened on an OAuth login: a brand-new account or a returning one. */
@@ -312,6 +313,7 @@ export type MobileAuthRedirect =
     };
 
 /** @deprecated Use {@link MobileAuthRedirect}; identical shape. */
+// eslint-disable-next-line sonarjs/redundant-type-aliases -- Documented public API name retained for consumers.
 export type MobileGoogleRedirect = MobileAuthRedirect;
 
 /** Constructor options for {@link AnimuAuth}. All fields are optional. */

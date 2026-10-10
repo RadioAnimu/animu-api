@@ -2,8 +2,6 @@ import * as v from "valibot";
 import { ValidationError, type RequestResult } from "./errors.js";
 import {
   MusicRequestResponseDTOSchema,
-  ProgramDTOSchema,
-  StreamMetadataDTOSchema,
   TrackHistorySchema,
   UserDTOSchema,
   type LiveListenersDTO,
@@ -28,7 +26,6 @@ import type {
   MusicRequestPagination,
   MusicSearchParams,
   Program,
-  Stream,
   Track,
   User,
 } from "./types.js";
@@ -324,7 +321,7 @@ export function programFromDTO(dto: ProgramDTO): Program {
 export function historyFromDTO(
   dto: unknown,
   type: HistoryType,
-  artworkQuality: ArtworkQuality,
+  _artworkQuality: ArtworkQuality,
   defaultCover: string,
 ): Track[] {
   const parsed = v.safeParse(TrackHistorySchema, dto);
@@ -356,9 +353,7 @@ export function historyFromDTO(
       playlistName: "",
     };
     // One filler rule for every panel (jingles/idents/transitions)
-    if (!isRealTrack(track)) continue;
-
-    tracks.push(track);
+    if (isRealTrack(track)) tracks.push(track);
   }
 
   return tracks;

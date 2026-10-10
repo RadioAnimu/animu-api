@@ -22,7 +22,6 @@ import {
   ProgramDTOSchema,
   StreamListDTOSchema,
   StreamMetadataDTOSchema,
-  UserDTOSchema,
 } from "./schemas.js";
 import type {
   AnimuApiOptions,
@@ -415,7 +414,7 @@ export class AnimuApi {
           code_verifier: params.codeVerifier,
         }).toString(),
       });
-    } catch (error) {
+    } catch {
       throw new AnimuApiError(
         "Token exchange request failed",
         0,
