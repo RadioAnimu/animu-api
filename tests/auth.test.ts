@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { AnimuApi } from "../src/animu-api";
 import { AnimuAuth } from "../src/auth";
-import { AnimuApiError } from "../src/errors";
 import type { FetchLike } from "../src/http";
 
 const BASE = "https://auth.test";
