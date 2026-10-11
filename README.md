@@ -211,3 +211,8 @@ pnpm run build
 ## License
 
 MIT
+
+## Quality gates
+
+See [CI and quality policy](docs/quality-gates.md) for local checks, GitHub Actions,
+Jenkins, SonarQube, coverage floors, and the native test scope.

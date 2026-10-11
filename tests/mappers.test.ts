@@ -373,7 +373,6 @@ describe("musicRequestFromDTO + paginationFromDTO", () => {
   });
 
   it("search rows obey the artwork quality — the same setting as now-playing", () => {
-    const dto = v.parse(MusicRequestResponseDTOSchema, searchResponsePayload);
     // Row 2 carries every size: image_large/image_medium/image_tiny pairs
     // map to the CDN's size suffixes, so quality picks the same URL family
     // now-playing would pick for that track.

@@ -2,7 +2,7 @@ import * as v from "valibot";
 import { DEFAULT_USER_AGENT, ENDPOINTS } from "./endpoints.js";
 import { clientHeaders, resolveUserAgent } from "./client-info.js";
 import { AnimuApiError } from "./errors.js";
-import { HttpClient, type BinaryResponse, type RequestOptions } from "./http.js";
+import { HttpClient, type RequestOptions } from "./http.js";
 import {
   AuthAvatarDTOSchema,
   AuthEmailRemoveDTOSchema,
@@ -22,7 +22,6 @@ import {
 } from "./auth-schemas.js";
 import {
   authRemoveEmailFromDTO,
-  authEmailFromDTO,
   authEmailsFromDTO,
   authEmailSentFromDTO,
   authLinkFromDTO,
