@@ -191,8 +191,8 @@ export class AnimuApi {
   /**
    * Fetches track history from the given endpoint.
    *
-   * Rows whose title contains "animu" (station jingles) are filtered out;
-   * an invalid payload degrades to an empty array.
+   * Station filler (jingles/idents/transitions, see `isRealTrack`) is
+   * filtered out; an invalid payload degrades to an empty array.
    *
    * @param type - `"played"` for the latest played tracks, `"requests"` for
    * the latest listener requests.

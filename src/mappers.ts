@@ -308,9 +308,9 @@ export function programFromDTO(dto: ProgramDTO): Program {
  * Maps a history endpoint payload to tracks.
  *
  * Rows are positional PHP arrays — `[title, cover]` for played history,
- * `[title, HH:MM:SS, requestId, cover]` for requests. Rows whose title
- * contains "animu" (station jingles) are dropped; if any row fails schema
- * validation the whole payload degrades to `[]`.
+ * `[title, HH:MM:SS, requestId, cover]` for requests. Station filler
+ * (jingles/idents/transitions, see `isRealTrack`) is dropped; if any row
+ * fails schema validation the whole payload degrades to `[]`.
  *
  * @param dto - Raw payload; validated internally.
  * @param type - Which history endpoint the payload came from.
