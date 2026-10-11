@@ -55,7 +55,11 @@ export const FALLBACK_STREAMS = [
   { id: "64", bitrate: 64, category: "AAC+", url: "https://stream.animu.moe/64" },
 ] as const;
 
-/** Anime-name fallback used when a raw title has no `"| Anime"` suffix. */
+/**
+ * Conventional display label for a track without an anime (no `"| Anime"`
+ * suffix). Not applied by the mappers — `Track.anime` stays `""` so each
+ * surface picks its own fallback.
+ */
 export const DEFAULT_ANIME_FALLBACK = "Now Playing";
 
 /** Default User-Agent header. Override via {@link AnimuApiOptions.userAgent}. */

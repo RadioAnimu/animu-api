@@ -35,7 +35,7 @@ One-shot payload (no auth). Serves the same status file the SSE stream broadcast
 
 Mapping rules:
 
-- `parseNowPlayingTitle(rawtitle)` splits `"Artist - Title | Anime"` → `Track.{title,artist,anime}`. Server-resolved `track.artist`/`track.title` win when present; the `rawtitle` parse is the fallback.
+- `parseNowPlayingTitle(rawtitle)` splits `"Artist - Title | Anime"` → `Track.{title,artist,anime}`. No `"| Anime"` suffix (a song from no anime, e.g. `"Ado - Value"`) → `anime: ""`; the mappers never write a placeholder — `DEFAULT_ANIME_FALLBACK` (`"Now Playing"`) is a display label for consumers. Server-resolved `track.artist`/`track.title` win when present; the `rawtitle` parse is the fallback.
 - If the server title still embeds `" | "` (its `titleBreaker` only splits on `" - "`), the `rawtitle` parse wins so the anime suffix is not swallowed into the title.
 - `Track.id` = `track.playlist.track_id` (`"0"` when absent); `Track.playlistName` = `track.playlist.title` (`""` when absent).
 - `isRequest` = `rawtitle` carries the request marker: the legacy `"Pedido: …"` prefix or the current `"[Música pedida por …]"` suffix (matched as `pedid` + `o`/`a`, case-insensitive).
@@ -96,7 +96,9 @@ history[0]; // newest on-real-track entry (.title/.artist/.anime parsed from new
 
 Query: `server`, `query`, `filter?`, `requestable?`, `limit?` (default 25), `offset?` (default 0). Tastypie envelope: `meta.{limit,offset,total_count,next,previous}` + `objects[]`.
 
-- Row title format: `Artist-Title|Anime` (no spaces); without a `-` the whole segment becomes **both** artist and song (documented quirk).
+- Row title format: `Song | Anime`, or just `Song` for a track from no anime — the artist is not in it. The song keeps every dash (`Ashura-chan`, `Pre-Parade`); the anime comes from the server's own split (`actual_fucking_anime`) when present, else after the first `|`.
+- `artist` = `author`, else what precedes `" - " + song` in `actual_fucking_title`; `""` when neither has one (never the song).
+- `anime`, `artist`, `album`, `genre` are `""` when missing — no `"Unknown …"` placeholders; the UI picks the fallback.
 - `requestable` = `!timestrike`.
 - `image_*` are **relative** paths, prefixed with the web base.
 - `nextPageParams` parsed from `meta.next`, reusable as `searchMusic` input; `totalPages` = `ceil(total_count / limit)`.
@@ -105,7 +107,7 @@ Query: `server`, `query`, `filter?`, `requestable?`, `limit?` (default 25), `off
 const page = await animu.searchMusic({ server: 1, query: "Gurenge" });
 if (page.totalResults) {
   await animu.submitMusicRequest({
-    trackId: page.results[0].id,    // .song/.anime/.artist/.requestable available
+    trackId: page.results[0].id,    // .song/.anime/.artist/.album/.genre/.requestable available
     message: "bora",
     sessionId,
   });

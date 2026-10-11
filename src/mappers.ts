@@ -11,7 +11,6 @@ import {
   type StreamMetadataDTO,
 } from "./schemas.js";
 import {
-  DEFAULT_ANIME_FALLBACK,
   DEFAULT_COVER,
   ENDPOINTS,
 } from "./endpoints.js";
@@ -50,12 +49,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * Without a dash separator the whole main segment becomes the title.
  *
  * @param rawTitle - Untouched title string from the API.
- * @param animeFallback - Anime label used when no `"| Anime"` suffix exists.
+ * @param animeFallback - Anime used when no `"| Anime"` suffix exists
+ * (default `""`: not every song is from an anime).
  * @returns Parsed title, artist and anime parts.
  */
 export function parseNowPlayingTitle(
   rawTitle: string,
-  animeFallback: string = DEFAULT_ANIME_FALLBACK,
+  animeFallback = "",
 ): {
   title: string;
   artist: string;
@@ -80,26 +80,34 @@ export function parseNowPlayingTitle(
 }
 
 /**
- * Parses a request-search title: `"Artist-Title|Anime"` (no spaces —
- * this endpoint uses a different convention than the now-playing rawtitle).
+ * Parses a request-search title: `"Song | Anime"`, or just `"Song"` for a
+ * track with no anime. The artist is not part of it (the row's `author`).
  *
- * Note the API's quirk: without a `"-"` separator, the whole main segment
- * becomes **both** the artist and the song.
+ * The anime is cut at the first `"|"`; the song keeps every dash
+ * (`"Ashura-chan"`, `"Pre-Parade"`, `"HIBANA -Hibana-"`).
  *
  * @param title - Untouched title string from the search endpoint.
- * @returns Parsed song, anime and artist, with placeholder fallbacks.
+ * @param anime - The server's own anime split (`actual_fucking_anime`),
+ * preferred when present: it also cuts the suffix off the song exactly.
+ * @returns Song and anime; `""` for a missing part.
  */
-export function parseRequestTitle(title: string): {
+export function parseRequestTitle(
+  title: string,
+  anime = "",
+): {
   song: string;
   anime: string;
-  artist: string;
 } {
-  const [songPart = "", animePart] = title.split("|").map((s) => s.trim());
-  const [artist = "", song = ""] = songPart.split("-").map((s) => s.trim());
+  const known = anime.trim();
+  const suffix = ` | ${known}`;
+  if (known && title.trimEnd().endsWith(suffix)) {
+    return { song: title.trimEnd().slice(0, -suffix.length).trim(), anime: known };
+  }
+  const cut = title.indexOf("|");
+  if (cut < 0) return { song: title.trim(), anime: known };
   return {
-    song: song || songPart,
-    anime: animePart || "Unknown Anime",
-    artist: artist || "Unknown Artist",
+    song: title.slice(0, cut).trim(),
+    anime: known || title.slice(cut + 1).trim(),
   };
 }
 
@@ -466,7 +474,7 @@ export function musicRequestFromDTO(
   quality: ArtworkQuality,
   defaultCover: string,
 ): MusicRequest {
-  const { song, anime, artist } = parseRequestTitle(dto.title);
+  const { song, anime } = parseRequestTitle(dto.title, dto.actual_fucking_anime);
   const artworks: Artworks = {
     tiny: dto.image_tiny ? `${ENDPOINTS.web}${dto.image_tiny}` : undefined,
     medium: dto.image_medium ? `${ENDPOINTS.web}${dto.image_medium}` : undefined,
@@ -480,12 +488,23 @@ export function musicRequestFromDTO(
     raw: dto.title,
     song,
     anime,
-    artist: dto.author || artist,
+    artist: dto.author.trim() || artistFromFullTitle(dto.actual_fucking_title, song),
+    album: dto.album.trim(),
+    genre: dto.genre.trim(),
     artwork: hasAnyImage
       ? selectArtwork(artworks, quality, defaultCover)
       : defaultCover,
     requestable: !dto.timestrike,
   };
+}
+
+/**
+ * The artist out of the server's `"Artist - Song"` full title, for rows
+ * with no `author`: whatever precedes `" - " + song`.
+ */
+function artistFromFullTitle(fullTitle: string, song: string): string {
+  const suffix = ` - ${song}`;
+  return song && fullTitle.endsWith(suffix) ? fullTitle.slice(0, -suffix.length).trim() : "";
 }
 
 /**

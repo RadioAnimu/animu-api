@@ -60,7 +60,11 @@ export interface Track {
   raw: string;
   title: string;
   artist: string;
-  /** Anime the track is associated with; falls back to a generic label. */
+  /**
+   * Anime the track is associated with; `""` when it has none (a J-Pop
+   * single, a game song without a tag). Display a fallback such as
+   * `DEFAULT_ANIME_FALLBACK` where a label is needed.
+   */
   anime: string;
   artworks: Artworks;
   /** Single resolved cover URL, selected by quality and validated as an image. */
@@ -226,8 +230,14 @@ export interface MusicRequest {
   /** Untouched title string exactly as the API reported it. */
   raw: string;
   song: string;
+  /** `""` when the track is from no anime. */
   anime: string;
+  /** `""` when the catalogue has none. */
   artist: string;
+  /** Release the file is tagged with; `""` when untagged. */
+  album: string;
+  /** Genre tag (free text: `"Anime"`, `"J-Pop"`, `"Game"`…); `""` when untagged. */
+  genre: string;
   /** Fully-qualified artwork URL. */
   artwork: string;
   /** `false` when the track was played too recently to be requested again. */

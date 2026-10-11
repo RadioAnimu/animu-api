@@ -22,6 +22,7 @@ import {
 import type { Track } from "../src/types";
 import type { MusicRequestDTO } from "../src/schemas";
 import {
+  MusicRequestDTOSchema,
   MusicRequestResponseDTOSchema,
   StreamMetadataDTOSchema,
 } from "../src/schemas";
@@ -56,8 +57,12 @@ describe("parseNowPlayingTitle", () => {
     });
   });
 
-  it("falls back to the neutral anime fallback when no separator", () => {
-    expect(parseNowPlayingTitle("Artist - Song").anime).toBe("Now Playing");
+  it("leaves the anime empty for a song from none (no '| Anime' suffix)", () => {
+    expect(parseNowPlayingTitle("Ado - Value")).toEqual({
+      title: "Value",
+      artist: "Ado",
+      anime: "",
+    });
   });
 
   it("accepts a custom anime fallback", () => {
@@ -68,26 +73,45 @@ describe("parseNowPlayingTitle", () => {
     expect(parseNowPlayingTitle("")).toEqual({
       title: "",
       artist: "",
-      anime: "Now Playing",
+      anime: "",
     });
   });
 });
 
 describe("parseRequestTitle", () => {
-  it("splits 'Artist-Title|Anime' without spaces", () => {
-    expect(parseRequestTitle("LiSA-Gurenge|Kimetsu no Yaiba")).toEqual({
+  it("splits 'Song | Anime'", () => {
+    expect(parseRequestTitle("Gurenge | Kimetsu no Yaiba")).toEqual({
       song: "Gurenge",
       anime: "Kimetsu no Yaiba",
-      artist: "LiSA",
     });
   });
 
-  it("falls back to unknown placeholders", () => {
-    // No dash: the whole part becomes the artist (matches app behavior)
-    expect(parseRequestTitle("Solo Song")).toEqual({
-      song: "Solo Song",
-      anime: "Unknown Anime",
-      artist: "Solo Song",
+  it("keeps dashes in the song (live catalogue rows)", () => {
+    expect(parseRequestTitle("Ashura-chan")).toEqual({ song: "Ashura-chan", anime: "" });
+    expect(parseRequestTitle("Pre-Parade | Toradora!")).toEqual({
+      song: "Pre-Parade",
+      anime: "Toradora!",
+    });
+    expect(parseRequestTitle("HIBANA -Hibana- | Ikizu Live! LOVE LIVE! BLUEBIRD").song).toBe(
+      "HIBANA -Hibana-",
+    );
+  });
+
+  it("leaves the anime empty for a song from none", () => {
+    expect(parseRequestTitle("Value")).toEqual({ song: "Value", anime: "" });
+  });
+
+  it("prefers the server's anime split, cutting its exact suffix", () => {
+    expect(
+      parseRequestTitle(
+        "Egao no Chikara -Re-mix ver- | ef - a tale of melodies",
+        "ef - a tale of melodies",
+      ),
+    ).toEqual({ song: "Egao no Chikara -Re-mix ver-", anime: "ef - a tale of melodies" });
+    // Leading space from the catalogue's double-spaced file names
+    expect(parseRequestTitle(" Ai Uta | Otonari no Tenshi-sama", "Otonari no Tenshi-sama")).toEqual({
+      song: "Ai Uta",
+      anime: "Otonari no Tenshi-sama",
     });
   });
 });
@@ -367,8 +391,42 @@ describe("musicRequestFromDTO + paginationFromDTO", () => {
       song: "Aegis of Love",
       anime: "Ijiranaide, Nagatoro-san 2nd Attack",
       artist: "Sunomiya (CV: Sayumi Suzushiro)",
+      album: "",
+      genre: "",
       artwork: "https://www.animu.moe//media/tracks/trackImage9126_large.jpg", // web base keeps its trailing slash (app parity)
       requestable: true,
+    });
+  });
+
+  it("maps a song from no anime with its album and genre tags (live row: Value by Ado)", () => {
+    const row = v.parse(MusicRequestDTOSchema, {
+      id: 1960,
+      title: "Value",
+      author: "Ado",
+      album: "Value",
+      genre: "J-Pop",
+      actual_fucking_title: "Ado - Value",
+      actual_fucking_anime: "",
+    });
+    expect(musicRequestFromDTO(row, "high", DEFAULT_COVER)).toMatchObject({
+      song: "Value",
+      anime: "",
+      artist: "Ado",
+      album: "Value",
+      genre: "J-Pop",
+    });
+  });
+
+  it("takes the artist from the server's full title when the row has no author", () => {
+    const row = v.parse(MusicRequestDTOSchema, {
+      id: 2,
+      title: "Ashura-chan",
+      author: "",
+      actual_fucking_title: "Ado - Ashura-chan",
+    });
+    expect(musicRequestFromDTO(row, "high", DEFAULT_COVER)).toMatchObject({
+      song: "Ashura-chan",
+      artist: "Ado",
     });
   });
 
@@ -380,6 +438,10 @@ describe("musicRequestFromDTO + paginationFromDTO", () => {
       id: 1,
       title: "Aegis of Love|Ijiranaide, Nagatoro-san 2nd Attack",
       author: "Sunomiya",
+      album: "",
+      genre: "",
+      actual_fucking_title: "",
+      actual_fucking_anime: "",
       image_large: "/media/tracks/trackImage9126_large.jpg",
       image_medium: "/media/tracks/trackImage9126_medium.jpg",
       image_tiny: "/media/tracks/trackImage9126_tiny.jpg",
@@ -407,14 +469,16 @@ describe("musicRequestFromDTO + paginationFromDTO", () => {
     );
 
     // A row with no image at all always gets the default cover
-    expect(musicRequestFromDTO({ id: 5, title: "X", author: "", timestrike: "" }, "high", DEFAULT_COVER).artwork).toBe(DEFAULT_COVER);
+    const bare = v.parse(MusicRequestDTOSchema, { id: 5, title: "X", author: "", timestrike: "" });
+    expect(musicRequestFromDTO(bare, "high", DEFAULT_COVER).artwork).toBe(DEFAULT_COVER);
   });
 
-  it("uses author fallback and flags timestrike as not requestable", () => {
+  it("leaves an unknown artist empty and flags timestrike as not requestable", () => {
     const dto = v.parse(MusicRequestResponseDTOSchema, searchResponsePayload);
     const second = musicRequestFromDTO(dto.objects[1]!, "high", DEFAULT_COVER);
-    // No dash in the song part → the whole part becomes the artist (app parity)
-    expect(second.artist).toBe("Silversun");
+    // No author and no full title: no artist (never the song as artist)
+    expect(second.artist).toBe("");
+    expect(second.song).toBe("Silversun");
     expect(second.requestable).toBe(true);
 
     const third = musicRequestFromDTO(dto.objects[2]!, "high", DEFAULT_COVER);

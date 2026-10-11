@@ -120,6 +120,14 @@ export const MusicRequestDTOSchema = v.object({
   id: coerceNumber,
   title: v.string(),
   author: v.fallback(v.string(), ""),
+  /** Release the file is tagged with (`""` when untagged). */
+  album: v.fallback(v.string(), ""),
+  /** Genre tag, free text (`"Anime"`, `"J-Pop"`, `"Game"`…). */
+  genre: v.fallback(v.string(), ""),
+  /** Server's own split: `"Artist - Song"`. */
+  actual_fucking_title: v.fallback(v.string(), ""),
+  /** Server's own split: the anime, `""` for a song from none. */
+  actual_fucking_anime: v.fallback(v.string(), ""),
   image_large: v.optional(v.string()),
   image_medium: v.optional(v.string()),
   image_tiny: v.optional(v.string()),
