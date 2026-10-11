@@ -132,6 +132,49 @@ describe("live mappers", () => {
     expect(song.track?.duration).toBe(0);
   });
 
+  it("degrades null and missing fields instead of dropping the song", () => {
+    const { track } = liveSongChangePayload;
+    const dto = v.parse(LiveSongChangeDTOSchema, {
+      ...liveSongChangePayload,
+      offline_since: null,
+      message: null,
+      track: {
+        ...track,
+        album: null,
+        artist: null,
+        timestart: undefined,
+        artworks: { tiny: null, medium: track.artworks.medium, large: null },
+        playlist: { title: null },
+      },
+    });
+    const song = liveNowPlayingFromDTO(dto, "high", "fallback.png");
+    expect(song.track?.raw).toBe(liveSongChangePayload.rawtitle);
+    expect(song.track?.artist).toBe("Kikuo feat. Hatsune Miku"); // from rawtitle
+    expect(song.track?.artwork).toBe(track.artworks.medium);
+    expect(song.track?.id).toBe("0");
+    expect(song.track?.playlistName).toBe("");
+    expect(song.track?.startTime.getTime()).toBe(song.receivedAt.getTime());
+    expect(song.album).toBe("");
+    expect(song.offlineSince).toBeNull();
+  });
+
+  it("degrades a null playlist, artworks and rawtitle", () => {
+    const dto = v.parse(LiveSongChangeDTOSchema, {
+      ...liveSongChangePayload,
+      rawtitle: null,
+      track: { ...liveSongChangePayload.track, playlist: null, artworks: null },
+    });
+    const song = liveNowPlayingFromDTO(dto, "medium", "fallback.png");
+    expect(song.track?.id).toBe("0");
+    expect(song.track?.artwork).toBe("fallback.png");
+    expect(song.track?.title).toBe("Kimi wa Dekinai Ko");
+  });
+
+  it("maps a null track like an absent one", () => {
+    const dto = v.parse(LiveSongChangeDTOSchema, { ...liveSongChangePayload, track: null });
+    expect(liveNowPlayingFromDTO(dto, "medium", "fallback.png").track).toBeNull();
+  });
+
   it("maps the offline station payload", () => {
     const dto = v.parse(LiveSongChangeDTOSchema, liveSongChangeOfflinePayload);
     const song = liveNowPlayingFromDTO(dto, "medium", "fallback.png");

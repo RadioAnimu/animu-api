@@ -9,34 +9,48 @@ const coerceNumber = v.pipe(v.unknown(), v.transform(Number), v.number());
 const coerceBoolean = v.pipe(v.unknown(), v.transform(Boolean), v.boolean());
 
 /**
+ * An optional field that may also arrive as `null` (the Go daemon marshals an
+ * unset pointer as `null`): both read as absent, so one empty field degrades
+ * that field instead of failing the whole payload — a dropped `song_change`
+ * is not re-sent until the next title change.
+ */
+const absentable = <T extends v.GenericSchema>(schema: T) =>
+  v.pipe(
+    v.nullish(schema),
+    v.transform((value) => value ?? undefined),
+  );
+
+/**
  * Now-playing payload from the API base URL.
  *
  * `track` is optional: payloads without track data degrade to a null track.
  */
 const TrackObjectSchema = v.object({
-  artist: v.optional(v.string()),
-  title: v.optional(v.string()),
-  album: v.optional(v.string()),
+  artist: absentable(v.string()),
+  title: absentable(v.string()),
+  album: absentable(v.string()),
   duration: coerceNumber,
-  timestart: coerceNumber,
-  artworks: v.optional(
+  // `0` → the mappers' "now" fallback for `startTime`.
+  timestart: v.fallback(coerceNumber, 0),
+  artworks: absentable(
     v.object({
-      tiny: v.optional(v.string()),
-      medium: v.optional(v.string()),
-      large: v.optional(v.string()),
+      tiny: absentable(v.string()),
+      medium: absentable(v.string()),
+      large: absentable(v.string()),
     }),
   ),
-  playlist: v.optional(
+  playlist: absentable(
     v.object({
-      track_id: coerceNumber,
-      title: v.optional(v.string()),
+      // `0` → no playlist id, like an absent playlist.
+      track_id: v.fallback(coerceNumber, 0),
+      title: absentable(v.string()),
     }),
   ),
 });
 
 export const TrackDTOSchema = v.object({
-  rawtitle: v.optional(v.string()),
-  track: v.optional(TrackObjectSchema),
+  rawtitle: absentable(v.string()),
+  track: absentable(TrackObjectSchema),
 });
 
 /**
@@ -67,16 +81,16 @@ export const StreamMetadataDTOSchema = v.object({
  */
 export const LiveSongChangeDTOSchema = v.object({
   ...StreamMetadataDTOSchema.entries,
-  track: v.optional(
+  track: absentable(
     v.object({
       ...TrackObjectSchema.entries,
       duration: v.fallback(coerceNumber, 0),
     }),
   ),
-  server_name: v.optional(v.string()),
-  status: v.optional(v.string()),
-  offline_since: v.optional(v.string()),
-  message: v.optional(v.string()),
+  server_name: absentable(v.string()),
+  status: absentable(v.string()),
+  offline_since: absentable(v.string()),
+  message: absentable(v.string()),
 });
 
 /** `listeners` event from the realtime SSE stream. */
