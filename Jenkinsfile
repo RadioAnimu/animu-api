@@ -47,7 +47,7 @@ pipeline {
       agent {
         docker {
           image 'node:22-bookworm'
-          args '-u root'
+          args '-u root -v animu-node-cache:/opt/animu-cache -e CI_CACHE_DIR=/opt/animu-cache'
         }
       }
       steps {
@@ -55,6 +55,7 @@ pipeline {
           set -eux
           git config --global --add safe.directory "$WORKSPACE"
           rm -rf coverage junit.xml
+          . scripts/ci-cache.sh
           corepack enable
           pnpm install --frozen-lockfile
           pnpm run check:ci
@@ -66,6 +67,8 @@ pipeline {
           tar -czf animu-api-dist.tar.gz dist
           ls -la animu-api-dist.tar.gz
         '''
+        sh 'node scripts/ci-results.mjs publish RadioAnimu/animu-api'
+        archiveArtifacts artifacts: 'ci-results.json', fingerprint: true
         archiveArtifacts artifacts: 'animu-api-dist.tar.gz', fingerprint: true
       }
       post {
