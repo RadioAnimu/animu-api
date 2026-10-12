@@ -5,26 +5,34 @@ const { readdirSync, readFileSync, renameSync, writeFileSync } = require("node:f
 const { join } = require("node:path");
 
 const dir = join(__dirname, "..", "dist", "cjs");
-for (const file of readdirSync(dir)) {
-  const isJs = file.endsWith(".js");
-  const isDts = file.endsWith(".d.ts");
-  if (!isJs && !isDts) continue;
+function rewrite(directory) {
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const file = entry.name;
+    if (entry.isDirectory()) {
+      rewrite(join(directory, file));
+      continue;
+    }
+    const isJs = file.endsWith(".js");
+    const isDts = file.endsWith(".d.ts");
+    if (!isJs && !isDts) continue;
 
-  let content = readFileSync(join(dir, file), "utf8");
-  // Rewrite relative imports: ./x.js -> ./x.cjs (or .d.cts in declarations)
-  content = content.replace(
-    /(\.\.?\/[A-Za-z0-9_-]+)\.js(?![\w.])/g,
-    isDts ? "$1.d.cts" : "$1.cjs",
-  );
-  // Keep source maps pointing at the renamed files
-  content = content.replace(/"(source|file)":\s*"([^"]+)\.js"/g, (m, key, name) =>
-    `"${key}": "${name}${isDts ? ".d.cts" : ".cjs"}"`,
-  );
-  writeFileSync(join(dir, file), content);
+    let content = readFileSync(join(directory, file), "utf8");
+    // .cjs specifiers resolve to .d.cts for TypeScript consumers too.
+    content = content.replace(
+      /(\.\.?\/[A-Za-z0-9_./-]+)\.js(?![\w.])/g,
+      "$1.cjs",
+    );
+    // Keep source maps pointing at the renamed files
+    content = content.replace(/"(source|file)":\s*"([^"]+)\.js"/g, (m, key, name) =>
+      `"${key}": "${name}${isDts ? ".d.cts" : ".cjs"}"`,
+    );
+    writeFileSync(join(directory, file), content);
 
-  const target = isDts
-    ? file.replace(/\.d\.ts$/, ".d.cts")
-    : file.replace(/\.js$/, ".cjs");
-  if (target !== file) renameSync(join(dir, file), join(dir, target));
+    const target = isDts
+      ? file.replace(/\.d\.ts$/, ".d.cts")
+      : file.replace(/\.js$/, ".cjs");
+    if (target !== file) renameSync(join(directory, file), join(directory, target));
+  }
 }
+rewrite(dir);
 console.log("dist/cjs: rewritten imports and renamed to .cjs / .d.cts");
