@@ -37,7 +37,7 @@
   ],
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "pnpm run build:esm && pnpm run build:cjs",
+    "build": "pnpm run build:esm && pnpm run build:cjs && node scripts/check-package.mjs",
     "build:esm": "tsc -p tsconfig.esm.json",
     "build:cjs": "tsc -p tsconfig.cjs.json && node scripts/rename-cjs.cjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -56,13 +56,13 @@
     "valibot": "^1.5.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.5",
-    "@types/node": "^24.0.0",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.5",
     "@vitest/coverage-v8": "^4.1.11",
-    "eslint": "^9.39.5",
+    "eslint": "^10.12.0",
     "eslint-plugin-sonarjs": "^4.2.2",
-    "globals": "^16.5.0",
-    "typescript": "^5.9.2",
+    "globals": "^17.13.0",
+    "typescript": "^6.0.3",
     "typescript-eslint": "^8.71.1",
     "vitest": "^4.1.11"
   },
