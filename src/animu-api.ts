@@ -6,7 +6,6 @@ import { HttpClient, toFormData } from "./http.js";
 import { AnimuAuth } from "./auth.js";
 import { AnimuLive } from "./live.js";
 import type { AnimuAuthOptions } from "./auth-types.js";
-import type { LiveOptions } from "./types.js";
 import {
   historyFromDTO,
   listenersFromMetadata,
@@ -28,6 +27,7 @@ import type {
   ArtworkQuality,
   HistoryType,
   LiveRequest,
+  LiveOptions,
   Listeners,
   MusicRequestPagination,
   MusicSearchParams,
@@ -112,7 +112,7 @@ export class AnimuApi {
    * implementation. Use `authBaseUrl` to point at a non-production deploy.
    */
   get auth(): AnimuAuth {
-    if (!this.authClient) this.authClient = new AnimuAuth(this.authOptions);
+    this.authClient ??= new AnimuAuth(this.authOptions);
     return this.authClient;
   }
 
@@ -133,7 +133,7 @@ export class AnimuApi {
    * ```
    */
   get live(): AnimuLive {
-    if (!this.liveClient) this.liveClient = new AnimuLive(this.liveOptions);
+    this.liveClient ??= new AnimuLive(this.liveOptions);
     return this.liveClient;
   }
 

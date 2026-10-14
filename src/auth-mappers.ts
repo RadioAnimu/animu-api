@@ -1,3 +1,4 @@
+import { trimTrailingSlashes } from "./url-utils.js";
 import type {
   AuthEmailDTO,
   AuthEmailRemoveDTO,
@@ -37,7 +38,7 @@ import type {
 function resolveUrl(baseUrl: string, url: string | null): string | null {
   if (!url) return null;
   if (/^https?:\/\//i.test(url)) return url;
-  return `${baseUrl.replace(/\/+$/, "")}/${url.replace(/^\/+/, "")}`;
+  return `${trimTrailingSlashes(baseUrl)}/${url.replace(/^\/+/, "")}`;
 }
 
 /**

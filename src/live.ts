@@ -65,7 +65,7 @@ export class SSEDecoder {
     let i = 0;
 
     while (i < this.buffer.length) {
-      const code = this.buffer.charCodeAt(i);
+      const code = this.buffer.codePointAt(i);
       if (code !== 10 && code !== 13) {
         i++;
         continue;
@@ -99,7 +99,7 @@ export class SSEDecoder {
       this.skipLeadingLf = true;
       return 1;
     }
-    return this.buffer.charCodeAt(index + 1) === 10 ? 2 : 1;
+    return this.buffer.codePointAt(index + 1) === 10 ? 2 : 1;
   }
 
   private finishMessage(): SSEMessage | null {
@@ -229,7 +229,7 @@ class Utf8Decoder {
       }
       const codePoint = size > 1 ? utf8CodePoint(bytes, i, size) : null;
       if (size === 1) {
-        out += String.fromCharCode(lead);
+        out += String.fromCodePoint(lead);
       } else if (codePoint === null) {
         out += "\u{FFFD}";
       } else {
@@ -318,7 +318,7 @@ export class AnimuLive {
     this.fetchImpl = options.fetchImpl ?? ((...args) => fetch(...args));
     this.headers = {
       ...clientHeaders(options.clientInfo),
-      ...(options.headers ?? {}),
+      ...options.headers,
     };
     this.artworkQuality = options.artworkQuality ?? "medium";
     this.defaultCover = options.defaultCover ?? DEFAULT_COVER;
