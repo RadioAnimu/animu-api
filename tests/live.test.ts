@@ -512,6 +512,36 @@ describe("AnimuLive", () => {
     sub.close();
   });
 
+  it("keeps decoding the chunk after a byte that cannot start a character", async () => {
+    // A stray continuation byte inside one event must not take the rest of
+    // the chunk with it: the next event (same chunk) still arrives intact.
+    const first = encoder.encode("event: listeners\ndata: {\"listeners\": 3}\n\n");
+    const bad = encoder.encode(": junk ");
+    const second = encoder.encode(sseEvent("song_change", liveSongChangePayload));
+    const chunk = new Uint8Array([...first, ...bad, 0x80, 0xff, 0x0a, ...second]);
+    const response = {
+      ok: true,
+      status: 200,
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(chunk);
+          controller.close();
+        },
+      }),
+    } as unknown as Response;
+    const live = new AnimuLive({ fetchImpl: async () => response, reconnect: false, url: LIVE_URL });
+
+    const listeners: number[] = [];
+    const albums: string[] = [];
+    const sub = live.subscribe({
+      onListeners: (value) => listeners.push(value.value),
+      onSongChange: (song) => albums.push(song.album),
+    });
+    await waitFor(() => expect(albums).toEqual(["きくおミク3"]));
+    expect(listeners[0]).toBe(3);
+    sub.close();
+  });
+
   it("yields typed events through the async iterator", async () => {
     const fetchImpl: FetchLike = async () =>
       sseResponse([

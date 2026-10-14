@@ -241,6 +241,7 @@ Per `events()` consumer the pending queue is bounded by `maxPending` (default
 Delivery guarantees:
 
 - The server is best-effort (per-client channel of 16, silently skips slow clients) and sends no keep-alive comments; both are covered client-side by the seeding behavior + automatic reconnect with capped backoff and jitter. Non-retryable: HTTP 4xx other than 408/429.
+- A byte that cannot start a UTF-8 character decodes to U+FFFD and decoding continues; the rest of the chunk is never dropped.
 - `song_change` is authoritative — after any gap the next event reflects current state.
 - `onListeners` fires deduped (only when the value changed vs the previous event).
 - Late subscribers replay the inbox synchronously, then go live; the very first event on a fresh connect is always the seeded `song_change`.

@@ -218,29 +218,24 @@ class Utf8Decoder {
     let i = 0;
     while (i < bytes.length) {
       const lead = bytes[i]!;
-      if (lead < 0x80) {
-        out += String.fromCharCode(lead);
-        i += 1;
-        continue;
-      }
-      const size = utf8Size(lead);
-      if (size === 0) {
-        // Preserve the existing invalid-leading-byte behavior: emit one
-        // replacement and stop this chunk.
-        return out + "\u{FFFD}";
-      }
+      // A byte that cannot start a character (a stray continuation byte, or
+      // one UTF-8 never uses) decodes to one replacement and decoding goes
+      // on: stopping would drop the rest of the chunk — and with it the line
+      // breaks that end an SSE event, merging it into the next one.
+      const size = lead < 0x80 ? 1 : utf8Size(lead);
       if (i + size > bytes.length) {
         this.carry = [...bytes.slice(i)];
         return out;
       }
-      const codePoint = utf8CodePoint(bytes, i, size);
-      if (codePoint === null) {
+      const codePoint = size > 1 ? utf8CodePoint(bytes, i, size) : null;
+      if (size === 1) {
+        out += String.fromCharCode(lead);
+      } else if (codePoint === null) {
         out += "\u{FFFD}";
-        i += 1;
       } else {
         out += String.fromCodePoint(codePoint);
-        i += size;
       }
+      i += codePoint === null ? 1 : size;
     }
     return out;
   }
