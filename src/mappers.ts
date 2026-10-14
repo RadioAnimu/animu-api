@@ -124,12 +124,13 @@ export function parseRequestTitle(
  * @param url - Any artwork URL, any size.
  */
 export function deriveArtworkVariants(url: string): Artworks | null {
-  const match =
-    /^(.+\/trackImage\d+)(?:_(tiny|medium|large))?(\.[a-z0-9]+)(?:\?.*)?$/i.exec(
-      url,
-    );
+  const clean = url.split("?")[0] ?? "";
+  const slash = clean.lastIndexOf("/");
+  if (slash <= 0 || /[\r\n]/.test(url)) return null;
+  const match = /^(trackImage\d+)(?:_(tiny|medium|large))?(\.[a-z0-9]+)$/i.exec(clean.slice(slash + 1));
   if (!match) return null;
-  const [, base, , ext] = match;
+  const base = clean.slice(0, slash + 1) + match[1];
+  const ext = match[3];
   return {
     tiny: `${base}_tiny${ext}`,
     medium: `${base}_medium${ext}`,
@@ -437,7 +438,7 @@ function getHistoryStartTime(
   if (type === "requests" && timeStr) {
     const [hours = 0, minutes = 0, seconds = 0] = timeStr
       .split(":")
-      .map((part) => parseInt(part, 10) || 0);
+      .map((part) => Number.parseInt(part, 10) || 0);
     const spNow = new Date(now - STATION_UTC_OFFSET_MS);
     const epoch =
       Date.UTC(
@@ -550,12 +551,12 @@ export function parseQueryParams(url: string): MusicSearchParams {
 
   const params = new URLSearchParams(queryString);
   return {
-    server: parseInt(params.get("server") || "1", 10),
+    server: Number.parseInt(params.get("server") || "1", 10),
     filter: params.get("filter") || "",
     query: params.get("query") || "",
     requestable: params.get("requestable") === "true",
-    limit: parseInt(params.get("limit") || "25", 10),
-    offset: parseInt(params.get("offset") || "0", 10),
+    limit: Number.parseInt(params.get("limit") || "25", 10),
+    offset: Number.parseInt(params.get("offset") || "0", 10),
   };
 }
 

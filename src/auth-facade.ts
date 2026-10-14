@@ -35,6 +35,7 @@ import {
   providerListFromDTO,
   sessionStatusFromDTO,
 } from "./auth-mappers.js";
+import { trimTrailingSlashes } from "./url-utils.js";
 import type {
   AnimuAuthOptions,
   AuthEmailCodeParams,
@@ -117,7 +118,7 @@ export class AnimuAuth {
 
   /** @param options - All fields optional; defaults target the production deploy. */
   constructor(options: AnimuAuthFacadeOptions = {}) {
-    this.baseUrl = (options.baseUrl ?? ENDPOINTS.auth).replace(/\/+$/, "");
+    this.baseUrl = trimTrailingSlashes(options.baseUrl ?? ENDPOINTS.auth);
     this.http = new HttpClient(
       resolveUserAgent(options.userAgent, options.clientInfo, DEFAULT_USER_AGENT),
       options.timeout ?? 20000,
