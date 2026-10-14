@@ -338,6 +338,13 @@ describe("programFromDTO", () => {
 });
 
 describe("historyFromDTO", () => {
+  it("rejects malformed nested PHP tuple fields", () => {
+    expect(historyFromDTO([["Artist - Title | Anime", "2026-09-03", { unexpected: "id" }, { unexpected: "cover" }]], "requests", "medium", DEFAULT_COVER)).toEqual([]);
+  });
+  it("preserves numeric PHP tuple fields as scalar text", () => {
+    const tracks = historyFromDTO([["Artist - Title | Anime", "14:32:05", 42, 123]], "requests", "medium", DEFAULT_COVER);
+    expect(tracks[0]).toMatchObject({ id: "42", artwork: "123" });
+  });
   it("maps played history using element [1] as cover", () => {
     const tracks = historyFromDTO(playedHistoryPayload, "played", "medium", DEFAULT_COVER);
     expect(tracks).toHaveLength(2); // "animu" ident row dropped
@@ -515,6 +522,13 @@ describe("parseQueryParams", () => {
 });
 
 describe("parseSubmissionResponse", () => {
+  it("does not display nested block data as an object string", () => {
+    expect(parseSubmissionResponse('{"pediblock":{"unexpected":"data"}}')).toEqual({ success: false, error: "PEDIBLOCK", detail: "" });
+  });
+  it.each(["null", "false", "42", '"unexpected"', "[]"])("rejects non-object JSON %s without throwing", (response) => {
+    expect(parseSubmissionResponse(response)).toEqual({ success: false, error: "REQUEST_ERROR" });
+  });
+
   it("treats an empty response as success", () => {
     expect(parseSubmissionResponse("")).toEqual({ success: true });
   });

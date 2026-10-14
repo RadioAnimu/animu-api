@@ -681,6 +681,15 @@ describe("legacy mobile contract", () => {
     });
   });
 
+  it("legacyExchangeToken rejects a malformed structured error without stringifying it", async () => {
+    const { fn } = mockFetch([
+      { match: () => true, reply: () => jsonResponse({ error: { token: "private" } }) },
+    ]);
+    await expect(auth(fn).legacyExchangeToken({ code: "c", redirectUri: "r" })).rejects.toMatchObject({
+      code: "token_exchange_failed", message: "token_exchange_failed",
+    });
+  });
+
   it("legacySessionStatus returns true only for '1'", async () => {
     const { fn, calls } = mockFetch([
       { match: () => true, reply: () => jsonResponse("1") },

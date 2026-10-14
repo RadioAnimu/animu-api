@@ -594,7 +594,9 @@ export class AnimuAuth {
 
     if (payload && typeof payload === "object" && "error" in payload) {
       const error = payload as { error?: unknown; message?: unknown };
-      const code = String(error.error ?? "token_exchange_failed");
+      const code = typeof error.error === "string" && error.error
+        ? error.error
+        : "token_exchange_failed";
       throw new AnimuApiError(
         typeof error.message === "string" && error.message
           ? error.message
@@ -759,7 +761,7 @@ export class AnimuAuth {
       ...options,
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
-        ...(options?.headers ?? {}),
+        ...options?.headers,
       },
     });
   }
@@ -790,7 +792,7 @@ export class AnimuAuth {
     extra?: RequestOptions,
   ): RequestOptions {
     const token = sessionId ?? this.sessions.current;
-    const headers: Record<string, string> = { ...(extra?.headers ?? {}) };
+    const headers: Record<string, string> = { ...extra?.headers };
     if (token) headers["X-Session-Id"] = token;
     return { ...extra, headers };
   }

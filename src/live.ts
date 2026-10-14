@@ -224,7 +224,7 @@ class Utf8Decoder {
       // breaks that end an SSE event, merging it into the next one.
       const size = lead < 0x80 ? 1 : utf8Size(lead);
       if (i + size > bytes.length) {
-        this.carry = [...bytes.slice(i)];
+        this.carry = Array.from(bytes.subarray(i));
         return out;
       }
       const codePoint = size > 1 ? utf8CodePoint(bytes, i, size) : null;
