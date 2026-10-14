@@ -240,7 +240,8 @@ Per `events()` consumer the pending queue is bounded by `maxPending` (default
 
 Delivery guarantees:
 
-- The server is best-effort (per-client channel of 16, silently skips slow clients) and sends no keep-alive comments; both are covered client-side by the seeding behavior + automatic reconnect with capped backoff and jitter. Non-retryable: HTTP 4xx other than 408/429.
+- The server is best-effort (per-client channel of 16, silently skips slow clients) and sends no keep-alive comments; both are covered client-side by the seeding behavior + automatic reconnect with capped backoff and jitter. A skipped event is not detectable on the stream itself — cross-check with `getStreamMetadata()` when another source (e.g. the audio's ICY title) disagrees. Non-retryable: HTTP 4xx other than 408/429.
+- A socket that dies without closing never errors — the read waits forever. Set `idleTimeout` (`liveIdleTimeout` on `AnimuApi`) to reconnect after that many ms without a byte; pick it above the server's longest quiet stretch (it writes only on a change). Off by default.
 - A byte that cannot start a UTF-8 character decodes to U+FFFD and decoding continues; the rest of the chunk is never dropped.
 - `song_change` is authoritative — after any gap the next event reflects current state.
 - `onListeners` fires deduped (only when the value changed vs the previous event).

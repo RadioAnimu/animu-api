@@ -133,12 +133,16 @@ new AnimuApi({
   fallbackStreams,  // Animu's public relays
   authBaseUrl,      // Animu Auth (v5) deploy base for `api.auth`
   liveUrl,          // realtime SSE endpoint for `api.live`
+  liveIdleTimeout,  // reconnect `api.live` after this many ms without a byte (0 = off)
 });
 ```
 
 `AnimuLive` accepts extra options (`live.subscribe` / `new AnimuLive(...)`) —
-notably `inboxSize` (replay buffer for late subscribers, default 128) and
-`maxPending` (per-`events()` backlog bound, default 120).
+notably `inboxSize` (replay buffer for late subscribers, default 128),
+`maxPending` (per-`events()` backlog bound, default 120) and `idleTimeout`
+(reconnect a connection silent this many ms — the server sends no
+keep-alive, so a socket that died without closing is otherwise never
+noticed; default 0, off).
 
 ## Errors
 

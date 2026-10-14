@@ -214,6 +214,15 @@ export interface LiveOptions {
    * `120`.
    */
   maxPending?: number;
+  /**
+   * Reconnect when nothing at all (no event, no comment) arrives for this
+   * many ms. A socket that dies without closing (a network handoff, a NAT
+   * timeout) never errors — the read just waits forever — so without this
+   * the stream can go silent until the client is recreated. Pick it above
+   * the server's longest quiet period: the daemon only writes on a change.
+   * `0` disables it. Default: `0`.
+   */
+  idleTimeout?: number;
 }
 
 /** An audio stream (relay) the radio publishes. */
@@ -340,4 +349,9 @@ export interface AnimuApiOptions {
    * {@link AnimuApi.live} client. Defaults to {@link ENDPOINTS.live}.
    */
   liveUrl?: string;
+  /**
+   * The {@link AnimuApi.live} client's {@link LiveOptions.idleTimeout}:
+   * reconnect after this many ms without a byte. `0` disables it (default).
+   */
+  liveIdleTimeout?: number;
 }

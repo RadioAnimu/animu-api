@@ -102,6 +102,7 @@ export class AnimuApi {
       url: options.liveUrl,
       artworkQuality: options.artworkQuality ?? "medium",
       defaultCover: options.defaultCover ?? DEFAULT_COVER,
+      idleTimeout: options.liveIdleTimeout,
     };
   }
 

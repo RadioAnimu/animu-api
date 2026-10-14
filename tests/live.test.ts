@@ -542,6 +542,122 @@ describe("AnimuLive", () => {
     sub.close();
   });
 
+  it("reconnects a connection that went silent past idleTimeout", async () => {
+    let calls = 0;
+    const fetchImpl: FetchLike = async () => {
+      calls += 1;
+      // The first socket died without closing: no bytes, no error, ever.
+      if (calls === 1) return hangingResponse();
+      return sseResponse([sseEvent("song_change", liveSongChangePayload)]);
+    };
+    const live = new AnimuLive({
+      fetchImpl,
+      idleTimeout: 20,
+      minReconnectDelay: 1,
+      maxReconnectDelay: 2,
+      reconnectJitter: 0,
+      url: LIVE_URL,
+    });
+
+    const errors: Error[] = [];
+    const titles: string[] = [];
+    const sub = live.subscribe({
+      onError: (error) => errors.push(error),
+      onSongChange: (song) => titles.push(song.track?.title ?? ""),
+    });
+    await waitFor(() => expect(titles[0]).toBe("Kimi wa Dekinai Ko"));
+    expect(errors.some((e) => /silent for 20ms/.test(e.message))).toBe(true);
+    sub.close();
+  });
+
+  it("never times out a connection that keeps talking", async () => {
+    let calls = 0;
+    let push!: (text: string) => void;
+    const fetchImpl: FetchLike = async () => {
+      calls += 1;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          push = (text) => controller.enqueue(encoder.encode(text));
+        },
+      });
+      return { ok: true, status: 200, body } as unknown as Response;
+    };
+    const live = new AnimuLive({ fetchImpl, idleTimeout: 40, url: LIVE_URL });
+    const errors: Error[] = [];
+    const sub = live.subscribe({ onError: (error) => errors.push(error) });
+    await waitFor(() => expect(calls).toBe(1));
+    for (let i = 0; i < 6; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      push(": keep-alive\n");
+    }
+    expect(errors).toEqual([]);
+    expect(calls).toBe(1);
+    sub.close();
+  });
+
+  describe("tick() — timers frozen by the runtime", () => {
+    it("fires an overdue reconnect", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        let calls = 0;
+        const fetchImpl: FetchLike = async () => {
+          calls += 1;
+          return calls === 1 ? sseResponse([]) : hangingResponse();
+        };
+        // A real backoff timer that will not fire within the test.
+        const live = new AnimuLive({ fetchImpl, minReconnectDelay: 60_000, reconnectJitter: 0, url: LIVE_URL });
+        const sub = live.subscribe({});
+        await waitFor(() => expect(calls).toBe(1));
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        live.tick(); // not due yet: nothing happens
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(calls).toBe(1);
+        vi.setSystemTime(Date.now() + 61_000);
+        live.tick();
+        await waitFor(() => expect(calls).toBe(2));
+        sub.close();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("fires an overdue idle timeout", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        let calls = 0;
+        const fetchImpl: FetchLike = async () => {
+          calls += 1;
+          return hangingResponse();
+        };
+        const live = new AnimuLive({
+          fetchImpl,
+          idleTimeout: 90_000,
+          minReconnectDelay: 1,
+          reconnectJitter: 0,
+          url: LIVE_URL,
+        });
+        const errors: Error[] = [];
+        const sub = live.subscribe({ onError: (error) => errors.push(error) });
+        await waitFor(() => expect(calls).toBe(1));
+        live.tick(); // silent, but not for long enough
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(calls).toBe(1);
+        vi.setSystemTime(Date.now() + 91_000);
+        live.tick();
+        await waitFor(() => expect(calls).toBe(2));
+        expect(errors.some((e) => /silent/.test(e.message))).toBe(true);
+        sub.close();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("is a no-op with nothing pending", () => {
+      const live = new AnimuLive({ fetchImpl: async () => hangingResponse(), url: LIVE_URL });
+      expect(() => live.tick()).not.toThrow();
+    });
+  });
+
   it("yields typed events through the async iterator", async () => {
     const fetchImpl: FetchLike = async () =>
       sseResponse([
@@ -563,5 +679,23 @@ describe("AnimuLive", () => {
   it("is exposed as a shared instance via AnimuApi", () => {
     const api = new AnimuApi();
     expect(api.live).toBe(api.live);
+  });
+
+  it("passes AnimuApi's liveIdleTimeout to the live client", async () => {
+    let calls = 0;
+    const fetchImpl: FetchLike = async () => {
+      calls += 1;
+      return calls === 1
+        ? hangingResponse()
+        : sseResponse([sseEvent("song_change", liveSongChangePayload)]);
+    };
+    const api = new AnimuApi({ fetchImpl, liveUrl: LIVE_URL, liveIdleTimeout: 20 });
+    const titles: string[] = [];
+    const sub = api.live.subscribe({
+      onSongChange: (song) => titles.push(song.track?.title ?? ""),
+    });
+    await waitFor(() => expect(titles[0]).toBe("Kimi wa Dekinai Ko"), 4000);
+    expect(calls).toBeGreaterThanOrEqual(2);
+    sub.close();
   });
 });

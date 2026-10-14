@@ -284,12 +284,17 @@ export class AnimuLive {
   private readonly reconnectJitter: number;
   private readonly inboxSize: number;
   private readonly maxPending: number;
+  private readonly idleTimeout: number;
 
   private readonly subscribers = new Set<Subscriber>();
   private nextSubscriberId = 1;
   private controller: AbortController | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private resolveReconnect: (() => void) | null = null;
+  /** Epoch ms the pending reconnect is due (see {@link tick}). */
+  private reconnectDueAt = 0;
+  /** Fires the open connection's idle timeout when overdue (see {@link tick}). */
+  private idleCheck: ((now: number) => void) | null = null;
   private attempts = 0;
   private running = false;
 
@@ -323,6 +328,7 @@ export class AnimuLive {
     this.reconnectJitter = options.reconnectJitter ?? 0.2;
     this.inboxSize = options.inboxSize ?? 128;
     this.maxPending = options.maxPending ?? 120;
+    this.idleTimeout = options.idleTimeout ?? 0;
   }
 
   /** Whether a connection is currently open. */
@@ -478,6 +484,27 @@ export class AnimuLive {
     this.stop();
   }
 
+  /**
+   * Fires the reconnect backoff and the idle timeout if they are overdue.
+   * Both run on `setTimeout`, which some runtimes freeze (React Native on
+   * Android in the background) while other code still runs — call this
+   * from a timer that keeps ticking there (e.g. a native player's progress
+   * events) so a dropped stream comes back without waiting for the app to
+   * return to the foreground. Never fires anything early; cheap and safe to
+   * call at any rate.
+   */
+  tick(): void {
+    const now = Date.now();
+    if (this.resolveReconnect && now >= this.reconnectDueAt) {
+      if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+      const resolve = this.resolveReconnect;
+      this.resolveReconnect = null;
+      resolve();
+    }
+    this.idleCheck?.(now);
+  }
+
   // ── Connection lifecycle ────────────────────────────────────────────────
 
   private start(): void {
@@ -537,20 +564,54 @@ export class AnimuLive {
     // Incremental UTF-8 decode — no TextDecoder needed (Hermes-safe).
     const utf8 = new Utf8Decoder();
     const sse = new SSEDecoder();
+    // A socket that died without a FIN (a network handoff, a NAT dropping
+    // the mapping) never errors: the read just waits forever. When nothing
+    // at all arrives for `idleTimeout`, the connection is presumed dead and
+    // cancelled, which ends the pending read and reconnects.
+    let idle = false;
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastByteAt = Date.now();
+    const fireIdle = (): void => {
+      if (idle) return;
+      idle = true;
+      reader.cancel().catch(() => {
+        // already released/errored — the read settles either way
+      });
+    };
+    const armIdle = (): void => {
+      lastByteAt = Date.now();
+      if (this.idleTimeout <= 0) return;
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(fireIdle, this.idleTimeout);
+    };
+    this.idleCheck = (now) => {
+      if (this.idleTimeout > 0 && now - lastByteAt >= this.idleTimeout) fireIdle();
+    };
     try {
+      armIdle();
       while (this.running && !signal.aborted) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done || idle) break;
+        armIdle();
         for (const message of sse.push(utf8.decode(value))) {
           this.dispatch(message);
         }
       }
     } finally {
+      this.idleCheck = null;
+      if (idleTimer) clearTimeout(idleTimer);
       try {
         await reader.cancel();
       } catch {
         // reader already released/errored — nothing to clean up
       }
+    }
+    if (idle) {
+      throw new AnimuApiError(
+        `Live stream silent for ${this.idleTimeout}ms`,
+        0,
+        { method: "GET", url: this.url },
+      );
     }
   }
 
@@ -641,6 +702,7 @@ export class AnimuLive {
 
   private waitBackoff(): Promise<void> {
     const delay = this.nextDelay();
+    this.reconnectDueAt = Date.now() + delay;
     return new Promise<void>((resolve) => {
       this.resolveReconnect = resolve;
       this.reconnectTimer = setTimeout(() => {
