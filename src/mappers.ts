@@ -346,10 +346,10 @@ export function historyFromDTO(
     const raw = title;
     const { title: song, artist, anime } = parseNowPlayingTitle(title);
     // Trailing tuple elements are loose (PHP arrays) — coerce here.
-    const coverUrl = String((isRequests ? item[3] : item[1]) ?? "");
+    const coverUrl = scalarText(isRequests ? item[3] : item[1]);
 
     const track: Track = {
-      id: isRequests ? String(item[2] ?? "") || "-1" : "-1",
+      id: isRequests ? scalarText(item[2]) || "-1" : "-1",
       raw,
       title: song,
       artist,
@@ -576,7 +576,11 @@ export function parseSubmissionResponse(response: string): RequestResult {
 
   let parsed: Record<string, unknown>;
   try {
-    parsed = JSON.parse(response) as Record<string, unknown>;
+    const value: unknown = JSON.parse(response);
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return { success: false, error: "REQUEST_ERROR" };
+    }
+    parsed = value as Record<string, unknown>;
   } catch {
     return { success: false, error: response };
   }
@@ -591,7 +595,7 @@ export function parseSubmissionResponse(response: string): RequestResult {
       return {
         success: false,
         error: block.toUpperCase(),
-        detail: String(parsed[block]),
+        detail: scalarText(parsed[block]),
       };
     }
   }
@@ -600,6 +604,13 @@ export function parseSubmissionResponse(response: string): RequestResult {
     success: false,
     error: typeof parsed["erro"] === "string" ? parsed["erro"] : "REQUEST_ERROR",
   };
+}
+
+/** PHP tuple fields may be scalar; nested payloads are not URLs, ids or labels. */
+function scalarText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return "";
 }
 
 /**
