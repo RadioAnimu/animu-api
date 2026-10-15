@@ -302,18 +302,30 @@ export class HttpClient {
 
 /**
  * Converts a flat object to `multipart/form-data`.
- * `null`/`undefined` values are skipped; nested objects are JSON-stringified;
- * everything else is stringified (booleans become `"true"`/`"false"`).
+ * Nested objects are JSON-stringified and scalars stringified (booleans become
+ * `"true"`/`"false"`); `null`, `undefined`, functions and symbols have no form
+ * representation and are skipped.
  */
 export function toFormData(input: Record<string, unknown>): FormData {
   const formData = new FormData();
   for (const [key, value] of Object.entries(input)) {
-    if (value === null || value === undefined) continue;
-    if (typeof value === "object") {
-      formData.append(key, JSON.stringify(value));
-    } else {
-      formData.append(key, String(value));
-    }
+    const text = formText(value);
+    if (text !== undefined) formData.append(key, text);
   }
   return formData;
+}
+
+function formText(value: unknown): string | undefined {
+  switch (typeof value) {
+    case "string":
+      return value;
+    case "number":
+    case "boolean":
+    case "bigint":
+      return String(value);
+    case "object":
+      return value === null ? undefined : JSON.stringify(value);
+    default:
+      return undefined;
+  }
 }
