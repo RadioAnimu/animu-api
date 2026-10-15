@@ -11,7 +11,7 @@ import type { ClientInfo } from "./types.js";
 export type AuthProviderName = string;
 
 /** What happened on an OAuth login: a brand-new account or a returning one. */
-export type AuthAction = "login" | "registered" | string;
+export type AuthAction = "login" | "registered" | (string & {});
 
 /** A login provider available in the Auth API, as reported by the server. */
 export interface ProviderInfo {
@@ -92,7 +92,7 @@ export interface AuthSessionInfo {
    * Animu Connect email-code login (`"native"` is the pre-v6 name, kept for
    * deploys older than the passwordless rename).
    */
-  loginProvider: AuthProviderName | "animu" | "native" | null;
+  loginProvider: "animu" | "native" | (AuthProviderName & {}) | null;
   /** Epoch seconds of the last activity, per the server. */
   lastActivity: number;
 }
@@ -144,7 +144,7 @@ export interface AuthAccountEmail {
   /** Normalized (trim + lowercase) address. */
   email: string;
   /** `"provider"` for auto-registered provider emails, `"animu"` for the extra one. */
-  source: "provider" | "animu" | string;
+  source: "provider" | "animu" | (string & {});
   /** The provider that registered it (`null` for the extra Animu Connect email). */
   provider: AuthProviderName | null;
   verified: boolean;

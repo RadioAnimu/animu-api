@@ -71,7 +71,7 @@ export class ValidationError extends AnimuApiError {
  */
 export type RequestResult =
   | { success: true }
-  | { success: false; error: RequestErrorCode | string; detail?: string };
+  | { success: false; error: RequestErrorCode | (string & {}); detail?: string };
 
 /**
  * Known machine-readable error codes returned by the submission endpoint.

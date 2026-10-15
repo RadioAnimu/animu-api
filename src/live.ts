@@ -366,7 +366,8 @@ export class AnimuLive {
     // Drain the inbox in order, so a late subscriber catches up on the
     // buffered events before live events reach it.
     if (this.inbox.length > 0) {
-      for (const event of [...this.inbox]) {
+      // A snapshot: subscriber callbacks run inside this loop.
+      for (const event of this.inbox.slice()) {
         if (subscriber.closed) break;
         this.deliver(subscriber, event);
       }
