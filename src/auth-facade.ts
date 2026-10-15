@@ -71,6 +71,9 @@ export interface AnimuAuthFacadeOptions extends AnimuAuthOptions {
   sessionStore?: SessionStore;
 }
 
+/** Form values; empty ones are left out of the request. */
+type FormFields = Record<string, string | number | boolean | null | undefined>;
+
 /**
  * Facade for the **Animu Auth API v5** — multi-provider OAuth (Discord,
  * Google, Apple, Fluxer) plus the passwordless "Animu Connect" email-code
@@ -749,7 +752,7 @@ export class AnimuAuth {
 
   private async postFormAt<T>(
     url: string,
-    data: Record<string, unknown>,
+    data: FormFields,
     options?: RequestOptions,
   ): Promise<T> {
     const body = new URLSearchParams();
@@ -768,7 +771,7 @@ export class AnimuAuth {
 
   private postForm<T>(
     path: string,
-    data: Record<string, unknown>,
+    data: FormFields,
     options?: RequestOptions,
   ): Promise<T> {
     return this.postFormAt<T>(this.url(path), data, options);
