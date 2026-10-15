@@ -160,7 +160,7 @@ describe("HttpClient.get", () => {
 });
 
 describe("toFormData", () => {
-  it("skips null/undefined, stringifies primitives and nested objects", () => {
+  it("skips values without a form representation, stringifies the rest", () => {
     const form = toFormData({
       a: "1",
       b: 2,
@@ -168,6 +168,8 @@ describe("toFormData", () => {
       nested: { x: 1 },
       skipNull: null,
       skipUndefined: undefined,
+      skipFunction: () => "source",
+      skipSymbol: Symbol("s"),
     });
 
     const entries = Object.fromEntries(
