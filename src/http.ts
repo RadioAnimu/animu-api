@@ -150,10 +150,31 @@ export class HttpClient {
 
   /**
    * Parses the body according to `responseType`. JSON parsing failures fall
-   * back to the raw text — many Animu endpoints echo plain strings.
+   * back to the raw text — many Animu endpoints echo plain strings (`"1"`,
+   * error sentences), and callers asking for text get it verbatim.
+   *
+   * An EMPTY body is different: `JSON.parse("")` throws, so the old fallback
+   * handed `""` to the caller — and a JSON endpoint's valibot schema then
+   * failed with a `ValiError` ("Expected Object but received \"\"") that
+   * carried no URL, method or status. A 200 with no body is exactly what an
+   * upstream outage looks like (the now-playing endpoint did this for hours),
+   * so it is reported here as a typed {@link AnimuApiError} while the response
+   * is still in scope: descriptive, loggable and catchable like every other
+   * transport failure.
    */
-  private parseBody<T>(text: string, responseType?: "json" | "text"): T {
+  private parseBody<T>(
+    text: string,
+    responseType: "json" | "text" | undefined,
+    method: string,
+    url: string,
+  ): T {
     if (responseType === "text") return text as unknown as T;
+    if (text.trim() === "") {
+      throw new AnimuApiError("Empty response body (expected JSON)", 0, {
+        method,
+        url,
+      });
+    }
     try {
       return JSON.parse(text) as T;
     } catch {
@@ -233,7 +254,7 @@ export class HttpClient {
       if (!response.ok) {
         throw errorFromResponse(response.status, text, method, fullUrl);
       }
-      return this.parseBody<T>(text, options?.responseType);
+      return this.parseBody<T>(text, options?.responseType, method, fullUrl);
     });
   }
 

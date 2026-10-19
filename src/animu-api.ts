@@ -41,6 +41,33 @@ import type {
 } from "./types.js";
 
 /**
+ * Validates a response payload against its schema, reporting failures as the
+ * documented {@link ValidationError} instead of leaking valibot's raw
+ * `ValiError`.
+ *
+ * `ValidationError` exists for exactly this ("a response payload fails schema
+ * validation") and every method's JSDoc promises it, but the direct `v.parse`
+ * calls let valibot's error escape: callers catching the package's single
+ * error type (`AnimuApiError`) missed schema failures entirely, and the error
+ * carried neither the endpoint nor the method. The valibot message is kept —
+ * it names what the payload actually looked like — so the failure is still
+ * diagnosable from one log line.
+ */
+function parsePayload<TSchema extends v.GenericSchema>(
+  schema: TSchema,
+  payload: unknown,
+  url: string,
+): v.InferOutput<TSchema> {
+  try {
+    return v.parse(schema, payload as v.InferInput<TSchema>);
+  } catch (error) {
+    const detail =
+      error instanceof Error && error.message ? `: ${error.message}` : "";
+    throw new ValidationError(`Invalid response payload${detail}`, url);
+  }
+}
+
+/**
  * TypeScript client for the Animu radio API.
  *
  * Covers now-playing metadata, programs, track history, music requests,
@@ -149,9 +176,10 @@ export class AnimuApi {
    * @throws {ValidationError} When the payload fails schema validation.
    */
   async getStreamMetadata(): Promise<StreamMetadata> {
-    const dto = v.parse(
+    const dto = parsePayload(
       StreamMetadataDTOSchema,
       await this.http.get<unknown>(ENDPOINTS.api),
+      ENDPOINTS.api,
     );
     return {
       track: trackFromMetadata(dto, this.artworkQuality, this.defaultCover),
@@ -180,9 +208,10 @@ export class AnimuApi {
    * @throws {AnimuApiError} On network/HTTP failures.
    */
   async getProgram(): Promise<Program> {
-    const dto = v.parse(
+    const dto = parsePayload(
       ProgramDTOSchema,
       await this.http.get<unknown>(ENDPOINTS.program),
+      ENDPOINTS.program,
     );
     return programFromDTO(dto);
   }
@@ -218,9 +247,10 @@ export class AnimuApi {
    * @throws {ValidationError} When the response fails schema validation.
    */
   async searchMusic(params: MusicSearchParams): Promise<MusicRequestPagination> {
-    const dto = v.parse(
+    const dto = parsePayload(
       MusicRequestResponseDTOSchema,
       await this.http.get<unknown>(ENDPOINTS.requestSearch, { params: params as unknown as Record<string, string | number | boolean> }),
+      ENDPOINTS.requestSearch,
     );
     return paginationFromDTO(dto, this.artworkQuality, this.defaultCover);
   }
@@ -331,12 +361,13 @@ export class AnimuApi {
     }
 
     try {
-      const data = v.parse(
+      const data = parsePayload(
         StreamListDTOSchema,
         await this.http.get<unknown>(ENDPOINTS.streams, {
           headers: { "Content-Type": "application/json" },
           noCache: forceRefresh,
         }),
+        ENDPOINTS.streams,
       ).map((s) => ({
         id: s.id,
         bitrate: s.bitrate,

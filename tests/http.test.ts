@@ -76,6 +76,39 @@ describe("HttpClient.get", () => {
     expect(data).toBe("plain php echo");
   });
 
+  it("throws a descriptive AnimuApiError for an empty JSON body", async () => {
+    // The observed upstream outage: HTTP 200, content-type JSON, no body.
+    fetchMock.mockResolvedValue(jsonResponse(""));
+    const client = new HttpClient("TestAgent", 5000);
+
+    const error = (await client.get("https://x.co/api").catch((e) => e)) as AnimuApiError;
+
+    expect(error).toBeInstanceOf(AnimuApiError);
+    expect(error.message).toBe("Empty response body (expected JSON)");
+    expect(error.details).toEqual({ status: 0, url: "https://x.co/api", method: "GET" });
+  });
+
+  it("treats a whitespace-only body as empty too", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(" \n\t "));
+    const client = new HttpClient("TestAgent", 5000);
+
+    await expect(client.get("https://x.co/api")).rejects.toThrow(
+      /Empty response body/,
+    );
+  });
+
+  it("keeps empty bodies working for text responses", async () => {
+    // Plain-text endpoints (PHP echoes of "1") must not be reclassified: an
+    // empty text body is a legitimate `""`, not a transport failure.
+    fetchMock.mockResolvedValue(jsonResponse(""));
+    const client = new HttpClient("TestAgent", 5000);
+
+    const data = await client.get<string>("https://x.co/api", {
+      responseType: "text",
+    });
+    expect(data).toBe("");
+  });
+
   it("throws AnimuApiError with status on HTTP errors", async () => {
     fetchMock.mockResolvedValue(jsonResponse("nope", 404));
     const client = new HttpClient("TestAgent", 5000);

@@ -73,6 +73,33 @@ describe("getStreamMetadata", () => {
     mockFetch([{ match: () => true, reply: () => jsonResponse("down", 503) }]);
     await expect(new AnimuApi().getStreamMetadata()).rejects.toBeInstanceOf(AnimuApiError);
   });
+
+  it("reports an empty 200 body as a descriptive AnimuApiError", async () => {
+    // Regression: an empty body used to reach the valibot schema as `""` and
+    // surface as a raw ValiError with no URL/status, spamming the app's logs.
+    mockFetch([{ match: () => true, reply: () => jsonResponse("") }]);
+    const api = new AnimuApi();
+
+    const error = (await api.getStreamMetadata().catch((e) => e)) as AnimuApiError;
+
+    expect(error).toBeInstanceOf(AnimuApiError);
+    expect(error.name).toBe("AnimuApiError");
+    expect(error.message).toBe("Empty response body (expected JSON)");
+    expect(error.url).toBe("https://api.animu.moe/");
+  });
+
+  it("wraps schema failures in ValidationError", async () => {
+    // A malformed (but non-empty) payload is the schema layer's job; it must
+    // still surface as the package's own error type, as the method documents.
+    mockFetch([{ match: () => true, reply: () => jsonResponse({ track: "nope" }) }]);
+
+    const error = (await new AnimuApi().getStreamMetadata().catch((e) => e)) as ValidationError;
+
+    expect(error).toBeInstanceOf(ValidationError);
+    expect(error).toBeInstanceOf(AnimuApiError);
+    expect(error.message).toContain("Invalid response payload");
+    expect(error.url).toBe("https://api.animu.moe/");
+  });
 });
 
 describe("getProgram", () => {
