@@ -47,7 +47,7 @@ type HttpMethod = "GET" | "POST" | "DELETE";
  * server's error envelope when present:
  * `{ "ok": false, "error": { "code", "message" } }`.
  */
-function errorFromResponse(
+export function errorFromResponse(
   status: number,
   text: string,
   method: string,
@@ -98,6 +98,23 @@ export const abortAllInFlightRequests = (): void => {
   }
   inFlightControllers.clear();
 };
+
+/**
+ * Adds an externally managed controller (e.g. the one-shot SSE snapshot in
+ * `getStreamMetadata`) to the same registry, so
+ * {@link abortAllInFlightRequests} can cut it loose exactly like a regular
+ * request. Pair it with {@link unregisterInFlightController} in a `finally`.
+ */
+export function registerInFlightController(controller: AbortController): void {
+  inFlightControllers.add(controller);
+}
+
+/** Removes a controller added by {@link registerInFlightController}. */
+export function unregisterInFlightController(
+  controller: AbortController,
+): void {
+  inFlightControllers.delete(controller);
+}
 
 /**
  * Minimal fetch wrapper: timeout via AbortController, short-lived GET

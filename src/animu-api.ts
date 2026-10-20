@@ -2,9 +2,16 @@ import * as v from "valibot";
 import { DEFAULT_COVER, DEFAULT_USER_AGENT, ENDPOINTS, FALLBACK_STREAMS } from "./endpoints.js";
 import { clientHeaders, resolveUserAgent } from "./client-info.js";
 import { AnimuApiError, ValidationError, type RequestResult } from "./errors.js";
-import { HttpClient, toFormData } from "./http.js";
+import {
+  errorFromResponse,
+  HttpClient,
+  registerInFlightController,
+  toFormData,
+  unregisterInFlightController,
+  type FetchLike,
+} from "./http.js";
 import { AnimuAuth } from "./auth.js";
-import { AnimuLive } from "./live.js";
+import { AnimuLive, readFirstSSEEvent, type SSEMessage } from "./live.js";
 import type { AnimuAuthOptions } from "./auth-types.js";
 import {
   historyFromDTO,
@@ -17,10 +24,11 @@ import {
   validateLiveRequest,
 } from "./mappers.js";
 import {
+  LiveSongChangeDTOSchema,
   MusicRequestResponseDTOSchema,
   ProgramDTOSchema,
   StreamListDTOSchema,
-  StreamMetadataDTOSchema,
+  type LiveSongChangeDTO,
 } from "./schemas.js";
 import type {
   AnimuApiOptions,
@@ -68,10 +76,68 @@ function parsePayload<TSchema extends v.GenericSchema>(
 }
 
 /**
+ * Best-effort body of a failed response, for its error envelope. Gives up
+ * (`""`) the moment `signal` aborts, so a body that stalls after its headers
+ * cannot outlive the request's timeout or its caller's abort.
+ */
+async function errorBody(response: Response, signal: AbortSignal): Promise<string> {
+  let onAbort = (): void => {};
+  const aborted = new Promise<string>((resolve) => {
+    onAbort = () => {
+      response.body?.cancel().catch(() => {
+        // already released/errored — nothing to cancel
+      });
+      resolve("");
+    };
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+  });
+  const text = (async () => {
+    try {
+      return await response.text();
+    } catch {
+      return "";
+    }
+  })();
+  try {
+    return await Promise.race([text, aborted]);
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
+}
+
+/** Whether an SSE event carries the now-playing snapshot. */
+function isSongChangeEvent(message: SSEMessage): boolean {
+  return message.event === "song_change" || message.event === "message";
+}
+
+/**
+ * Parses the JSON carried by a `song_change` event.
+ *
+ * Uses {@link LiveSongChangeDTOSchema} — the same schema the realtime client
+ * validates against — so quirks like the daemon's `"notime"` duration degrade
+ * exactly as they do on the long-lived stream. Both JSON syntax errors and
+ * schema failures surface as {@link ValidationError}, as `getStreamMetadata`
+ * documents.
+ */
+function parseSongChangeEvent(data: string, url: string): LiveSongChangeDTO {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(data);
+  } catch (error) {
+    const detail =
+      error instanceof Error && error.message ? `: ${error.message}` : "";
+    throw new ValidationError(`Invalid response payload${detail}`, url);
+  }
+  return parsePayload(LiveSongChangeDTOSchema, payload, url);
+}
+
+/**
  * TypeScript client for the Animu radio API.
  *
- * Covers now-playing metadata, programs, track history, music requests,
- * live shout-outs, audio streams and Discord-based authentication.
+ * Covers now-playing metadata (a one-shot snapshot of the SSE stream),
+ * programs, track history, music requests, live shout-outs, audio streams
+ * and Discord-based authentication.
  *
  * Every response is validated at the boundary (valibot schemas) and mapped to
  * domain types. Transport features: per-request timeouts, a short-lived GET
@@ -84,6 +150,8 @@ function parsePayload<TSchema extends v.GenericSchema>(
  * @example
  * ```ts
  * const animu = new AnimuApi({ userAgent: "my-bot/1.0" });
+ * // One-shot snapshot: opens the SSE stream, reads the seeding song_change,
+ * // then closes the connection.
  * const { track, listeners } = await animu.getStreamMetadata();
  * ```
  */
@@ -94,6 +162,12 @@ export class AnimuApi {
   private readonly fallbackStreams: Stream[];
   private readonly authOptions: AnimuAuthOptions;
   private readonly liveOptions: LiveOptions;
+  /** SSE endpoint used for one-shot now-playing snapshots. */
+  private readonly metadataUrl: string;
+  private readonly timeout: number;
+  private readonly fetchImpl: FetchLike;
+  /** Same User-Agent / `X-Client-*` set the HTTP client sends. */
+  private readonly metadataHeaders: Record<string, string>;
 
   private cachedStreams: Stream[] | null = null;
   private authClient: AnimuAuth | null = null;
@@ -106,11 +180,20 @@ export class AnimuApi {
       options.clientInfo,
       DEFAULT_USER_AGENT,
     );
+    const clientInfoHeaders = clientHeaders(options.clientInfo);
+    this.timeout = options.timeout ?? 20000;
+    this.fetchImpl = options.fetchImpl ?? ((...args) => fetch(...args));
+    this.metadataUrl = options.liveUrl ?? ENDPOINTS.live;
+    this.metadataHeaders = {
+      "User-Agent": userAgent,
+      "Content-Type": "application/json",
+      ...clientInfoHeaders,
+    };
     this.http = new HttpClient(
       userAgent,
-      options.timeout ?? 20000,
-      options.fetchImpl,
-      clientHeaders(options.clientInfo),
+      this.timeout,
+      this.fetchImpl,
+      clientInfoHeaders,
     );
     this.artworkQuality = options.artworkQuality ?? "medium";
     this.defaultCover = options.defaultCover ?? DEFAULT_COVER;
@@ -167,31 +250,159 @@ export class AnimuApi {
   // ─── Now playing ────────────────────────────────────────────────────────
 
   /**
-   * Fetches the current track and listener count in a single call to the
-   * API base URL.
+   * Fetches the current track and listener count as a one-shot snapshot of
+   * the realtime stream.
    *
+   * Opens `GET` on {@link ENDPOINTS.live} (`text/event-stream`), reads until
+   * the daemon's initial `song_change` event — it seeds every new connection
+   * with the full current state — and then cancels the stream so the socket
+   * closes. Comments and `listeners` ticks before that event are ignored, and
+   * no response is cached: each call reflects the current state.
+   *
+   * The whole exchange (connect + first event) is bounded by the client's
+   * `timeout` (default 20 s) and is cancelled by
+   * {@link abortAllInFlightRequests}, like any other request, and by
+   * `options.signal` until the snapshot has been read.
+   *
+   * @param options - `signal` aborts the whole exchange, including the wait
+   * for the first event (a fetch wrapper's own signal only spans the request
+   * up to its response headers).
    * @returns The mapped track (`null` when the payload lacks track data)
    * and the resolved listener count.
-   * @throws {AnimuApiError} On network/HTTP failures.
-   * @throws {ValidationError} When the payload fails schema validation.
+   * @throws {AnimuApiError} On network/HTTP failures, timeouts, or a stream
+   * that ends before the first `song_change` event.
+   * @throws {ValidationError} When the event payload is not valid JSON or
+   * fails schema validation.
    */
-  async getStreamMetadata(): Promise<StreamMetadata> {
-    const dto = parsePayload(
-      StreamMetadataDTOSchema,
-      await this.http.get<unknown>(ENDPOINTS.api),
-      ENDPOINTS.api,
-    );
-    return {
-      track: trackFromMetadata(dto, this.artworkQuality, this.defaultCover),
-      listeners: listenersFromMetadata(dto as unknown as Record<string, unknown>),
-    };
+  async getStreamMetadata(
+    options: { signal?: AbortSignal } = {},
+  ): Promise<StreamMetadata> {
+    const url = this.metadataUrl;
+    const controller = new AbortController();
+    registerInFlightController(controller);
+    // One timer covers connect + waiting for the seeding event.
+    const timer = setTimeout(() => controller.abort(), this.timeout);
+    // The caller's signal stays linked until the snapshot is read — unlike a
+    // fetch wrapper's, which only spans the request up to its headers.
+    const external = options.signal;
+    const abort = (): void => controller.abort();
+    if (external?.aborted) controller.abort();
+    external?.addEventListener("abort", abort, { once: true });
+    try {
+      const response = await this.openMetadataStream(url, controller, external);
+      if (!response.ok) {
+        const body = await errorBody(response, controller.signal);
+        if (controller.signal.aborted) {
+          throw this.metadataError(null, url, controller, external);
+        }
+        throw errorFromResponse(response.status, body, "GET", url);
+      }
+      if (!response.body) {
+        throw new AnimuApiError("Response has no readable body", 0, {
+          method: "GET",
+          url,
+        });
+      }
+
+      const event = await this.readMetadataEvent(
+        response.body,
+        url,
+        controller,
+        external,
+      );
+      const dto = parseSongChangeEvent(event.data, url);
+      return {
+        track: trackFromMetadata(dto, this.artworkQuality, this.defaultCover),
+        listeners: listenersFromMetadata(
+          dto as unknown as Record<string, unknown>,
+        ),
+      };
+    } finally {
+      clearTimeout(timer);
+      external?.removeEventListener("abort", abort);
+      // Closes the SSE socket even when the snapshot was read successfully.
+      controller.abort();
+      unregisterInFlightController(controller);
+    }
+  }
+
+  /** Opens the SSE request, normalizing network/timeout failures. */
+  private async openMetadataStream(
+    url: string,
+    controller: AbortController,
+    external: AbortSignal | undefined,
+  ): Promise<Response> {
+    try {
+      return await this.fetchImpl(url, {
+        method: "GET",
+        headers: {
+          ...this.metadataHeaders,
+          Accept: "text/event-stream",
+        },
+        signal: controller.signal,
+      });
+    } catch (error) {
+      throw this.metadataError(error, url, controller, external);
+    }
+  }
+
+  /** Reads until the seeding `song_change` event, normalizing read failures. */
+  private async readMetadataEvent(
+    body: ReadableStream<Uint8Array>,
+    url: string,
+    controller: AbortController,
+    external: AbortSignal | undefined,
+  ): Promise<SSEMessage> {
+    let event: SSEMessage | null;
+    try {
+      event = await readFirstSSEEvent(body, isSongChangeEvent, controller.signal);
+    } catch (error) {
+      throw this.metadataError(error, url, controller, external);
+    }
+    if (!event) {
+      throw new AnimuApiError(
+        "Stream ended before any song_change event",
+        0,
+        { method: "GET", url },
+      );
+    }
+    return event;
+  }
+
+  /**
+   * Normalizes fetch/read failures the way {@link HttpClient} does: an abort
+   * (our timeout or {@link abortAllInFlightRequests}) reports the timeout
+   * message, a caller's `signal` reports a cancellation, and everything else
+   * keeps the underlying message.
+   */
+  private metadataError(
+    error: unknown,
+    url: string,
+    controller: AbortController,
+    external: AbortSignal | undefined,
+  ): AnimuApiError {
+    if (error instanceof AnimuApiError) return error;
+    const isAbort =
+      controller.signal.aborted ||
+      (!!error &&
+        typeof error === "object" &&
+        (error as { name?: unknown }).name === "AbortError");
+    let message: string;
+    if (external?.aborted) {
+      message = "Request aborted";
+    } else if (isAbort) {
+      message = `Request timed out after ${this.timeout}ms`;
+    } else {
+      message = error instanceof Error ? error.message : "Unknown error";
+    }
+    return new AnimuApiError(message, 0, { method: "GET", url });
   }
 
   /**
    * Fetches just the listener count.
    *
-   * Convenience for {@link getStreamMetadata}; note it still downloads the
-   * full metadata payload.
+   * Convenience for {@link getStreamMetadata}; it still opens the SSE stream
+   * and reads the full `song_change` snapshot.
    */
   async getListeners(): Promise<Listeners> {
     return (await this.getStreamMetadata()).listeners;

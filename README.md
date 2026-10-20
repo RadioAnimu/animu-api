@@ -30,6 +30,11 @@ const streams = await animu.getStreams();
 const page = await animu.searchMusicByTitle("attack");
 ```
 
+`getStreamMetadata()` is a one-shot snapshot: it opens the same SSE stream,
+reads the first `song_change` event (the Go daemon seeds every connection with
+the current state) and closes it again — each call reflects the current state,
+with no polling cache. The legacy PHP root at `api.animu.moe` is retired.
+
 ## Realtime (SSE)
 
 `animu.live` consumes the station's realtime [Server-Sent Events][sse] stream

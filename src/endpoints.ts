@@ -2,7 +2,13 @@
 export const ENDPOINTS = {
   /** Animu website base URL. */
   web: "https://www.animu.moe/",
-  /** Now-playing metadata API (current track + listener count). */
+  /**
+   * @deprecated The legacy PHP endpoint at the API root is retired: it now
+   * answers HTTP 200 with an empty body (and its status file froze in
+   * October 2026). Now-playing metadata comes from {@link ENDPOINTS.live},
+   * the Go `rewrite-animu-api` SSE daemon, which seeds every connection with
+   * the current `song_change` payload. Kept only for backwards compatibility.
+   */
   api: "https://api.animu.moe/",
   /**
    * Realtime Server-Sent Events stream (`song_change` + `listeners`),

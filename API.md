@@ -13,12 +13,21 @@ behavior at the boundary, and a usage example per method.
 
 ## Now Playing — `getStreamMetadata()`
 
-`GET https://api.animu.moe/` → `{ track: Track | null, listeners: Listeners }`
+`GET https://api.animu.moe/tungtungtung/` (`Accept: text/event-stream`) → `{ track: Track | null, listeners: Listeners }`
 
-One-shot payload (no auth). Serves the same status file the SSE stream broadcasts (see [Realtime](#realtime-stream--live)).
+One-shot snapshot of the realtime SSE stream (no auth). The Go daemon seeds
+every new connection with the full current state as a `song_change` event, so
+the client reads that first event — ignoring comments and `listeners` ticks —
+then cancels the body and closes the socket. Each call reflects the current
+state: nothing is cached. The whole exchange (connect + first event) is bounded
+by the client timeout (default 20 s) and is cancelled by
+`abortAllInFlightRequests()`. The legacy PHP root (`https://api.animu.moe/`) is
+retired — it now answers HTTP 200 with an empty body.
 
 ```jsonc
 {
+  "server_name": "Animu FM Radio Station - The Most Moe Radio of Brazil!", // ignored here
+  "status": "autodj",                 // ignored here
   "rawtitle": "TK from Ling tosite sigure - P.S. Red I | Spider-Man: Into the Spider-verse",
   "listeners": 27,
   "track": {
@@ -27,7 +36,8 @@ One-shot payload (no auth). Serves the same status file the SSE stream broadcast
     "album": "P.S. Red I",
     "artworks": { "tiny": "…", "medium": "…", "large": "…" },
     "timestart": 1789662023000,       // epoch ms
-    "duration": 256653,               // ms (string in legacy payloads, coerced)
+    "duration": 256653,               // ms (string in legacy payloads, coerced;
+                                      // "notime" degrades to 0)
     "playlist": { "track_id": 18213, "title": "Animu Toca" }
   }
 }

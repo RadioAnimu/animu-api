@@ -205,7 +205,7 @@ function utf8CodePoint(bytes: Uint8Array, index: number, size: number): number |
   return codePoint;
 }
 
-class Utf8Decoder {
+export class Utf8Decoder {
   /** Continuation bytes of a sequence split across the last chunk. */
   private carry: number[] = [];
 
@@ -238,6 +238,67 @@ class Utf8Decoder {
       i += codePoint === null ? 1 : size;
     }
     return out;
+  }
+}
+
+/**
+ * Reads an SSE response body until `accept` matches one event, then cancels
+ * the reader so the server closes the connection.
+ *
+ * The one-shot counterpart of {@link AnimuLive}'s long-lived `consume` loop:
+ * same incremental UTF-8 decoding (Hermes-safe, no `TextDecoder`) and same
+ * {@link SSEDecoder}, but it stops at the first matching event instead of
+ * dispatching forever. Comments and non-matching events (e.g. `listeners`
+ * ticks) are skipped.
+ *
+ * @param body - Response body from a streaming-capable `fetch`.
+ * @param accept - Predicate selecting the event to return.
+ * @returns The first accepted event, or `null` when the stream ended first.
+ */
+export async function readFirstSSEEvent(
+  body: ReadableStream<Uint8Array>,
+  accept: (message: SSEMessage) => boolean,
+  signal?: AbortSignal,
+): Promise<SSEMessage | null> {
+  const reader = body.getReader();
+  // Not every streaming fetch rejects a pending read when its request is
+  // aborted; cancelling the reader settles it everywhere.
+  const cancel = (): void => {
+    reader.cancel().catch(() => {
+      // reader already released/errored — the read settles either way
+    });
+  };
+  if (signal?.aborted) cancel();
+  signal?.addEventListener("abort", cancel, { once: true });
+  try {
+    const event = await consumeUntilAccepted(reader, accept);
+    // A cancelled read ends like a clean EOF; report it as the abort it was.
+    if (signal?.aborted) {
+      const error = new Error("The operation was aborted");
+      error.name = "AbortError";
+      throw error;
+    }
+    return event;
+  } finally {
+    signal?.removeEventListener("abort", cancel);
+    // Not awaited: a cancel that never settles must not hold the caller.
+    cancel();
+  }
+}
+
+/** Decodes chunks until one yields an accepted event (or the stream ends). */
+async function consumeUntilAccepted(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  accept: (message: SSEMessage) => boolean,
+): Promise<SSEMessage | null> {
+  const sse = new SSEDecoder();
+  const utf8 = new Utf8Decoder();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return null;
+    const messages = value ? sse.push(utf8.decode(value)) : [];
+    const match = messages.find(accept);
+    if (match) return match;
   }
 }
 
