@@ -84,6 +84,7 @@ export {
   legacyMobileSessionFromDTO,
   linkedProviderFromDTO,
   parseMobileAuthRedirect,
+  // oxlint-disable-next-line typescript/no-deprecated -- the public alias, kept until a major
   parseMobileGoogleRedirect,
   providerListFromDTO,
   sessionStatusFromDTO,

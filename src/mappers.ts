@@ -174,6 +174,7 @@ export function selectArtwork(
     case "low":
       result = artworks.tiny || defaultCover;
       break;
+    case "off":
     default:
       result = defaultCover;
   }
@@ -199,7 +200,7 @@ export function trackFromMetadata(
   artworkQuality: ArtworkQuality,
   defaultCover: string,
 ): Track | null {
-  if (!dto?.track) return null;
+  if (!dto.track) return null;
 
   const raw = dto.rawtitle ?? "";
   const { title, artist, anime } = parseNowPlayingTitle(raw);
@@ -213,7 +214,7 @@ export function trackFromMetadata(
     resolvedTitle && !resolvedTitle.includes(" | ") ? resolvedTitle : null;
 
   return {
-    id: dto.track.playlist?.track_id?.toString() ?? "0",
+    id: dto.track.playlist?.track_id.toString() ?? "0",
     raw,
     // The server (the Go daemon / API) resolves artist/title from its own
     // sources; the rawtitle parse is only a fallback for payloads that
@@ -271,7 +272,7 @@ export function liveNowPlayingFromDTO(
 ): LiveNowPlaying {
   return {
     track: trackFromMetadata(dto, artworkQuality, defaultCover),
-    listeners: listenersFromMetadata(dto as unknown as Record<string, unknown>),
+    listeners: listenersFromMetadata(dto),
     serverName: dto.server_name ?? "",
     status: dto.status ?? "",
     rawTitle: dto.rawtitle ?? "",
@@ -376,7 +377,10 @@ export function historyFromDTO(
  * lives with the mappers and drives both history filtering and progress
  * display.
  */
-export function isRealTrack(track?: Track | null): boolean {
+export function isRealTrack(
+  // Any track-like value: the app also asks of tracks it rebuilt itself.
+  track?: Partial<Pick<Track, "raw" | "anime" | "artist">> | null,
+): boolean {
   if (!track) return false;
   const raw = track.raw?.toLowerCase() ?? "";
   const anime = track.anime?.toLowerCase() ?? "";
@@ -400,7 +404,8 @@ export function isRealTrack(track?: Track | null): boolean {
  * @param now - Current epoch ms (injectable for tests).
  */
 export function getTrackProgress(
-  track?: Track | null,
+  // Its start may be missing on a track the app rebuilt itself.
+  track?: (Pick<Track, "duration"> & Partial<Pick<Track, "startTime">>) | null,
   now: number = Date.now(),
 ): number | null {
   if (!track) return null;

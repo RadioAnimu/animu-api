@@ -205,7 +205,7 @@ function utf8CodePoint(bytes: Uint8Array, index: number, size: number): number |
   return codePoint;
 }
 
-export class Utf8Decoder {
+class Utf8Decoder {
   /** Continuation bytes of a sequence split across the last chunk. */
   private carry: number[] = [];
 
@@ -296,8 +296,7 @@ async function consumeUntilAccepted(
   for (;;) {
     const { done, value } = await reader.read();
     if (done) return null;
-    const messages = value ? sse.push(utf8.decode(value)) : [];
-    const match = messages.find(accept);
+    const match = sse.push(utf8.decode(value)).find(accept);
     if (match) return match;
   }
 }
@@ -520,10 +519,11 @@ export class AnimuLive {
     signal?.addEventListener("abort", onAbort);
 
     try {
-      while (true) {
+      for (;;) {
         const next = queue.shift();
         if (next) {
           yield next;
+          // oxlint-disable-next-line typescript/no-unnecessary-condition -- set by onClose, which TypeScript does not follow
         } else if (finished) {
           break;
         } else {
@@ -608,9 +608,13 @@ export class AnimuLive {
       const controller = new AbortController();
       this.controller = controller;
       const { retryable, endedCleanly } = await this.connect(controller);
+      // `running` may have changed during the await (stop()), which
+      // TypeScript's narrowing from the loop condition does not see.
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- see above
       if (this.running && endedCleanly) {
         this.emitError(new AnimuApiError("Live stream ended", 0, { method: "GET", url: this.url }));
       }
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- see above
       const stopped = !this.running || controller.signal.aborted;
       if (stopped || !this.reconnect || !retryable) break;
       await this.waitBackoff();
@@ -653,6 +657,9 @@ export class AnimuLive {
       armIdle();
       while (this.running && !signal.aborted) {
         const { done, value } = await reader.read();
+        // `idle` and `idleTimer` are set by fireIdle/armIdle, which
+        // TypeScript's narrowing does not follow.
+        // oxlint-disable-next-line typescript/no-unnecessary-condition -- see above
         if (done || idle) break;
         armIdle();
         for (const message of sse.push(utf8.decode(value))) {
@@ -661,6 +668,7 @@ export class AnimuLive {
       }
     } finally {
       this.idleCheck = null;
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- see above
       if (idleTimer) clearTimeout(idleTimer);
       try {
         await reader.cancel();
@@ -668,6 +676,7 @@ export class AnimuLive {
         // reader already released/errored — nothing to clean up
       }
     }
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- see above
     if (idle) {
       throw new AnimuApiError(
         `Live stream silent for ${this.idleTimeout}ms`,

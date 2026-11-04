@@ -67,7 +67,7 @@ function parsePayload<TSchema extends v.GenericSchema>(
   url: string,
 ): v.InferOutput<TSchema> {
   try {
-    return v.parse(schema, payload as v.InferInput<TSchema>);
+    return v.parse(schema, payload);
   } catch (error) {
     const detail =
       error instanceof Error && error.message ? `: ${error.message}` : "";
@@ -314,7 +314,7 @@ export class AnimuApi {
       return {
         track: trackFromMetadata(dto, this.artworkQuality, this.defaultCover),
         listeners: listenersFromMetadata(
-          dto as unknown as Record<string, unknown>,
+          dto,
         ),
       };
     } finally {

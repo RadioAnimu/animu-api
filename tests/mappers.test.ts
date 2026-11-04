@@ -287,7 +287,7 @@ describe("trackFromMetadata", () => {
   });
 
   it("returns null when the payload has no track object", () => {
-    expect(trackFromMetadata({} as never, "medium", DEFAULT_COVER)).toBeNull();
+    expect(trackFromMetadata({}, "medium", DEFAULT_COVER)).toBeNull();
   });
 
   it("guards a zero timestart with the current time", () => {
@@ -317,7 +317,7 @@ describe("listenersFromMetadata", () => {
 
 describe("programFromDTO", () => {
   it("maps a live program", () => {
-    const program = programFromDTO(programPayload as never);
+    const program = programFromDTO(programPayload);
     expect(program).toEqual({
       name: "Natsukashii",
       dj: "Dolode",
@@ -330,7 +330,7 @@ describe("programFromDTO", () => {
   });
 
   it("maps AutoDJ as not live and requests closed", () => {
-    const program = programFromDTO(programPayloadAutoDJ as never);
+    const program = programFromDTO(programPayloadAutoDJ);
     expect(program.isLive).toBe(false);
     expect(program.dj).toBe("Haruka Yuki");
     expect(program.acceptingRequests).toBe(false);

@@ -4,4 +4,3 @@
  * {@link SessionStore} — mirroring the auth server's own architecture.
  */
 export { AnimuAuth, type AnimuAuthFacadeOptions } from "./auth-facade.js";
-export type { BinaryResponse } from "./http.js";

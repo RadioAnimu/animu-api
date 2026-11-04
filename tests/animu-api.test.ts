@@ -69,7 +69,7 @@ function sseSongChange(data: unknown = metadataPayload): Response {
 /** Routed fake: maps URL → payload. */
 function mockFetch(routes: Array<{ match: (url: string) => boolean; reply: (url: string) => Response | Promise<Response> }>) {
   const fn = vi.fn<typeof fetch>(async (input: string | URL | Request) => {
-    const url = String(input);
+    const url = input instanceof Request ? input.url : input.toString();
     const route = routes.find((r) => r.match(url));
     if (!route) throw new Error(`Unhandled fetch in test: ${url}`);
     return route.reply(url);
@@ -207,7 +207,7 @@ describe("getStreamMetadata", () => {
 
     const error = (await new AnimuApi()
       .getStreamMetadata()
-      .catch((e) => e)) as AnimuApiError;
+      .catch((e: unknown) => e)) as AnimuApiError;
 
     expect(error).toBeInstanceOf(AnimuApiError);
     expect(error.message).toBe("HTTP error 503");
@@ -222,7 +222,7 @@ describe("getStreamMetadata", () => {
 
     const error = (await new AnimuApi()
       .getStreamMetadata()
-      .catch((e) => e)) as AnimuApiError;
+      .catch((e: unknown) => e)) as AnimuApiError;
 
     expect(error).toBeInstanceOf(AnimuApiError);
     expect(error.message).toBe("Response has no readable body");
@@ -236,7 +236,7 @@ describe("getStreamMetadata", () => {
 
     const error = (await new AnimuApi()
       .getStreamMetadata()
-      .catch((e) => e)) as AnimuApiError;
+      .catch((e: unknown) => e)) as AnimuApiError;
 
     expect(error).toBeInstanceOf(AnimuApiError);
     expect(error.name).toBe("AnimuApiError");
@@ -268,7 +268,7 @@ describe("getStreamMetadata", () => {
 
     const error = (await new AnimuApi()
       .getStreamMetadata()
-      .catch((e) => e)) as ValidationError;
+      .catch((e: unknown) => e)) as ValidationError;
 
     expect(error).toBeInstanceOf(ValidationError);
     expect(error).toBeInstanceOf(AnimuApiError);
@@ -291,7 +291,7 @@ describe("getStreamMetadata", () => {
 
     const error = (await new AnimuApi()
       .getStreamMetadata()
-      .catch((e) => e)) as ValidationError;
+      .catch((e: unknown) => e)) as ValidationError;
 
     expect(error).toBeInstanceOf(ValidationError);
     expect(error).toBeInstanceOf(AnimuApiError);
