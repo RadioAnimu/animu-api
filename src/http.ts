@@ -327,7 +327,8 @@ export class HttpClient {
       const buffer = await response.arrayBuffer();
       return {
         bytes: new Uint8Array(buffer),
-        contentType: response.headers.get("content-type") ?? "",
+        // oxlint-disable-next-line typescript/no-unnecessary-condition -- an injected FetchLike may answer with a Response-like value
+        contentType: response.headers?.get?.("content-type") ?? "",
       };
     });
   }

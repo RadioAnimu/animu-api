@@ -703,3 +703,9 @@ describe("getTrackProgress", () => {
     expect(getTrackProgress(undefined, NOW)).toBeNull();
   });
 });
+
+describe("trackFromMetadata from JavaScript", () => {
+  it("returns null for a missing payload instead of throwing", () => {
+    expect(trackFromMetadata(null as never, "medium", DEFAULT_COVER)).toBeNull();
+  });
+});
