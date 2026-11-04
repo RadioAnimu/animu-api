@@ -327,7 +327,7 @@ export class HttpClient {
       const buffer = await response.arrayBuffer();
       return {
         bytes: new Uint8Array(buffer),
-        contentType: response.headers?.get?.("content-type") ?? "",
+        contentType: response.headers.get("content-type") ?? "",
       };
     });
   }
@@ -363,6 +363,9 @@ function formText(value: unknown): string | undefined {
       return String(value);
     case "object":
       return value === null ? undefined : JSON.stringify(value);
+    case "function":
+    case "symbol":
+    case "undefined":
     default:
       return undefined;
   }

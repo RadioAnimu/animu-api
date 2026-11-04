@@ -4,22 +4,33 @@ The standalone repository enforces the same policy as the Animu app. Install
 with `pnpm install --frozen-lockfile`, then run:
 
 ```sh
-pnpm run check:ci
+pnpm verify          # every check, as CI runs it
+pnpm verify --fast   # skips the slow ones (secrets, dependency audit)
 ```
 
-Both GitHub Actions and Jenkins call that command. It scans complete Git history
-and current tracked/unignored files for secrets, then runs `check:quality`:
+`pnpm verify` (`scripts/verify.mjs`) runs every step even after one fails and
+ends with a summary of all of them. `pnpm run check:ci`, which GitHub Actions
+and Jenkins call, is the same script, so a local run and CI cannot drift apart:
 
+- Secrets: complete Git history and current tracked/unignored files.
 - Regression tests for the gate tooling.
 - Dependency audit: unreviewed high/critical findings fail; registry failures fail
   closed. Narrow, version/path-specific exceptions match the app and remain visible.
-- ESLint, including SonarJS production-code rules, with zero warnings allowed.
+- Lint, each with zero warnings allowed (`pnpm run lint` runs all three):
+  ESLint with SonarJS production-code rules (`lint:eslint`), oxlint's
+  type-aware rules run by tsgolint, the app's rule set (`lint:types`), and knip
+  for unused files, exports and dependencies (`lint:deps`).
 - TypeScript checks, unit tests and enforced coverage floors.
 - ESM and CommonJS builds.
 
-`check:quality` omits only Git-history scanning so the app can call it inside its
-isolated source copy; the app performs the full history scan before checking its
-submodules. Neither entry point requires the app checkout or its dependencies.
+`pnpm run check:quality` (`verify --no-secrets`) omits only Git-history scanning
+so the app can call it inside its isolated source copy; the app performs the
+full history scan before checking its submodules. Neither entry point requires
+the app checkout or its dependencies.
+
+A finding oxlint gets wrong (a flag set in a callback, which TypeScript's
+narrowing does not follow) is disabled on its line with the reason:
+`// oxlint-disable-next-line <rule> -- <why>`.
 
 Coverage floors are **89% statements, 77% branches, 90% functions, 90% lines**. They must only
 increase. LCOV (`coverage/lcov.info`) feeds SonarQube, and `CI=true` also emits

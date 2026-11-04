@@ -256,5 +256,8 @@ export function parseMobileAuthRedirect(url: string): MobileAuthRedirect {
   };
 }
 
-/** @deprecated Use {@link parseMobileAuthRedirect}; identical behaviour. */
+/**
+ * @deprecated Use {@link parseMobileAuthRedirect}; identical behaviour.
+ * @alias
+ */
 export const parseMobileGoogleRedirect = parseMobileAuthRedirect;

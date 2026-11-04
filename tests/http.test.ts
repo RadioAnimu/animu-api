@@ -81,7 +81,7 @@ describe("HttpClient.get", () => {
     fetchMock.mockResolvedValue(jsonResponse(""));
     const client = new HttpClient("TestAgent", 5000);
 
-    const error = (await client.get("https://x.co/api").catch((e) => e)) as AnimuApiError;
+    const error = (await client.get("https://x.co/api").catch((e: unknown) => e)) as AnimuApiError;
 
     expect(error).toBeInstanceOf(AnimuApiError);
     expect(error.message).toBe("Empty response body (expected JSON)");
@@ -113,7 +113,7 @@ describe("HttpClient.get", () => {
     fetchMock.mockResolvedValue(jsonResponse("nope", 404));
     const client = new HttpClient("TestAgent", 5000);
 
-    const error = (await client.get("https://x.co/api").catch((e) => e)) as AnimuApiError;
+    const error = (await client.get("https://x.co/api").catch((e: unknown) => e)) as AnimuApiError;
 
     expect(error).toBeInstanceOf(AnimuApiError);
     expect(error.statusCode).toBe(404);

@@ -106,7 +106,7 @@ export function requestResultMessage(
   error?: string,
   detail?: string,
 ): string {
-  switch (error?.toUpperCase()) {
+  switch ((error ?? "").toUpperCase()) {
     case "PEDIBLOCK":
       return detail
         ? `This track was already requested. Available again after ${new Date(detail + "Z").toLocaleTimeString()}`
