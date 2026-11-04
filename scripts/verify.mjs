@@ -37,10 +37,15 @@ export function plan(args) {
   );
 }
 
-/** The package manager this script runs under (its own binary, as `pnpm run` set it), or pnpm. */
-function runner() {
-  const execPath = process.env.npm_execpath;
-  return execPath ? [process.execPath, execPath] : ["pnpm"];
+/**
+ * The package manager this script runs under, as `pnpm run` named it in
+ * npm_execpath (a JS file, as pnpm's, runs on this Node; a launcher, as
+ * Yarn's, runs as is), or `pnpm` from PATH.
+ */
+export function runner(env = process.env) {
+  const execPath = env.npm_execpath;
+  if (!execPath) return ["pnpm"];
+  return /\.[cm]?js$/.test(execPath) ? [process.execPath, execPath] : [execPath];
 }
 
 function main(args) {

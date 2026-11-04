@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { plan, STEPS } from "../verify.mjs";
+import { plan, runner, STEPS } from "../verify.mjs";
 
 const scripts = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")).scripts;
 const labels = (steps) => steps.map((step) => step.label);
@@ -29,4 +29,10 @@ test("--fast skips the slow steps; an unknown flag is refused", () => {
   assert.ok(plan(["--fast"]).every((step) => !step.slow));
   assert.ok(plan(["--fast"]).some((step) => step.script === "test:coverage"));
   assert.equal(plan(["--fats"]), null);
+});
+
+test("steps run under the package manager that started verify", () => {
+  assert.deepEqual(runner({ npm_execpath: "/x/pnpm.cjs" }), [process.execPath, "/x/pnpm.cjs"]);
+  assert.deepEqual(runner({ npm_execpath: "/tmp/xfs-1/yarn" }), ["/tmp/xfs-1/yarn"]);
+  assert.deepEqual(runner({}), ["pnpm"]);
 });
