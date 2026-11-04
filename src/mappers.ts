@@ -200,7 +200,8 @@ export function trackFromMetadata(
   artworkQuality: ArtworkQuality,
   defaultCover: string,
 ): Track | null {
-  if (!dto.track) return null;
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- validates what a JS caller passes, whatever its type says
+  if (!dto?.track) return null;
 
   const raw = dto.rawtitle ?? "";
   const { title, artist, anime } = parseNowPlayingTitle(raw);
