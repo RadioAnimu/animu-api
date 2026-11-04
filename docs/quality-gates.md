@@ -8,8 +8,9 @@ pnpm verify          # every check, as CI runs it
 pnpm verify --fast   # skips the slow ones (secrets, dependency audit)
 ```
 
-`pnpm verify` (`scripts/verify.mjs`) runs every step even after one fails and
-ends with a summary of all of them. `pnpm run check:ci`, which GitHub Actions
+`pnpm verify` (`scripts/verify.mjs`) runs independent steps side by side (half the
+cores at a time; `--serial` runs one at a time with live output), runs every
+step even after one fails, and ends with a summary of all of them. `pnpm run check:ci`, which GitHub Actions
 and Jenkins call, is the same script, so a local run and CI cannot drift apart:
 
 - Secrets: complete Git history and current tracked/unignored files.
