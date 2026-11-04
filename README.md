@@ -212,7 +212,7 @@ Full endpoint reference with request/response schemas and business rules: [API.m
 
 ```bash
 pnpm install
-pnpm run typecheck
+pnpm verify          # every check CI runs, with a summary (--fast skips the slow ones)
 pnpm test
 pnpm run build
 ```

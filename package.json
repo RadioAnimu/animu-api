@@ -45,12 +45,16 @@
     "test:watch": "vitest",
     "prepack": "pnpm run build",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint . --max-warnings 0",
+    "lint": "pnpm run lint:eslint && pnpm run lint:types && pnpm run lint:deps",
+    "lint:eslint": "eslint . --max-warnings 0",
+    "lint:types": "oxlint --type-aware --deny-warnings",
+    "lint:deps": "knip --no-progress",
     "check:audit": "node scripts/check-dependency-audit.mjs",
     "check:secrets": "node scripts/check-secrets.mjs",
     "test:tooling": "node --test scripts/__tests__/*.test.mjs",
-    "check:ci": "pnpm run check:secrets && pnpm run check:quality",
-    "check:quality": "pnpm run test:tooling && pnpm run check:audit && pnpm run lint && pnpm run typecheck && pnpm run test:coverage && pnpm run build"
+    "check:ci": "node scripts/verify.mjs",
+    "check:quality": "node scripts/verify.mjs --no-secrets",
+    "verify": "node scripts/verify.mjs"
   },
   "dependencies": {
     "valibot": "^1.5.0"
@@ -62,6 +66,9 @@
     "eslint": "^10.13.0",
     "eslint-plugin-sonarjs": "^4.2.2",
     "globals": "^17.13.0",
+    "knip": "6.44.1",
+    "oxlint": "1.90.0",
+    "oxlint-tsgolint": "7.0.2005",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.72.1",
     "vitest": "^4.1.12"
