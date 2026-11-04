@@ -2,6 +2,8 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    // Beside the other `pnpm verify` steps: half the cores for the test files.
+    ...(process.env.VERIFY_RUNNING ? { maxWorkers: "50%" } : {}),
     include: ["tests/**/*.test.ts"],
     environment: "node",
     reporters: process.env.CI ? ["default", ["junit", { outputFile: "junit.xml" }]] : ["default"],
