@@ -216,3 +216,24 @@ describe("toFormData", () => {
     });
   });
 });
+
+describe("HttpClient.getBinary", () => {
+  it("reads an injected FetchLike's answer without headers as no content type", async () => {
+    for (const headers of [undefined, {}]) {
+      const fetch = vi.fn(async () =>
+        ({
+          ok: true,
+          status: 200,
+          headers,
+          text: async () => "",
+          arrayBuffer: async () => Uint8Array.from([1, 2, 3]).buffer,
+        }) as unknown as Response,
+      );
+      const client = new HttpClient("UA", 5000, fetch);
+      await expect(client.getBinary("https://x.co/a.jpg")).resolves.toEqual({
+        bytes: Uint8Array.from([1, 2, 3]),
+        contentType: "",
+      });
+    }
+  });
+});
